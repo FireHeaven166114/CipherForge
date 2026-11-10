@@ -1,0 +1,43 @@
+# --- Secrets & local configuration (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+build/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# --- Local data ---
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

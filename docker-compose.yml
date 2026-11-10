@@ -1,0 +1,119 @@
+# CipherForge - local / self-hosted stack.
+#
+#   cp .env.example .env        # then edit the values (never commit .env)
+#   docker compose up --build
+#
+# Open http://localhost:3000 (the ports below are bound to 127.0.0.1 only).
+#
+# The stack is: postgres -> migrate (one-shot) -> backend (FastAPI) -> frontend (nginx).
+# TLS, public exposure and HSTS belong to the reverse proxy / load balancer in front of the
+# `frontend` service; see docs/deployment.md.
+
+name: cipherforge
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Shared by `migrate` and `backend`: both run the same image and load the same settings.
+x-backend-environment: &backend-environment
+  # Secure defaults: if .env is incomplete the API refuses to start instead of running open.
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  AUTH_MODE: ${AUTH_MODE:-entra}
+  DEV_AUTH_ROLES: ${DEV_AUTH_ROLES:-SecurityAnalyst}
+  ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+  ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+  ENTRA_AUDIENCE: ${ENTRA_AUDIENCE:-}
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  # Built from the POSTGRES_* values. The password is placed in a URL, so keep it to letters and
+  # digits (for example the output of `openssl rand -hex 24`).
+  DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-cipherforge}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-cipherforge}"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cipherforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-cipherforge}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Loopback only, so tools on your machine can connect. Remove it if you do not need that.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  migrate:
+    build:
+      context: ./backend
+    image: cipherforge-backend:local
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  backend:
+    build:
+      context: ./backend
+    image: cipherforge-backend:local
+    restart: unless-stopped
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ./frontend
+    image: cipherforge-frontend:local
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:8080"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+volumes:
+  postgres_data:
