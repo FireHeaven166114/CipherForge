@@ -56,7 +56,7 @@ problem. Submitted values are never echoed back, and server errors never expose 
 Liveness. Does not touch any dependency, so it stays green while the database is down.
 
 ```json
-{ "status": "ok", "service": "cipherforge-api", "version": "0.2.0" }
+{ "status": "ok", "service": "cipherforge-api", "version": "0.3.0" }
 ```
 
 ### `GET /ready`
@@ -88,7 +88,9 @@ claim.
 
 All routes are under `/api/v1/intel` and need the `SecurityAnalyst` or `Admin` role: a request without
 a valid token gets `401`, and one with another role gets `403`. How results are produced is explained in
-[threat-intelligence.md](threat-intelligence.md).
+[threat-intelligence.md](threat-intelligence.md). The dashboard uses `POST /investigate`,
+`GET /indicators`, `GET /indicators/{id}` and `GET /stats`, and its status page uses `/health` and
+`/ready`.
 
 ### `POST /api/v1/intel/investigate`
 

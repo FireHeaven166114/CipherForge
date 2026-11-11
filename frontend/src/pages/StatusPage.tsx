@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
-
+import Card from "../components/Card";
 import StatusBadge, { type Tone } from "../components/StatusBadge";
+import { BUTTON } from "../components/styles";
 import type { CheckResult, OverallStatus } from "../features/status/overallStatus";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useServiceStatus } from "../hooks/useServiceStatus";
 import type { ApiError } from "../services/apiClient";
 import type { HealthResponse, ReadinessResponse } from "../types/api";
@@ -13,24 +14,12 @@ const OVERALL: Record<OverallStatus, { tone: Tone; label: string; detail: string
   down: { tone: "bad", label: "Down", detail: "The API cannot be reached." },
 };
 
-function Card({ title, badge, children }: { title: string; badge: ReactNode; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900 p-5">
-      <div className="flex items-start justify-between gap-4">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {badge}
-      </div>
-      <div className="mt-3 text-sm text-slate-300">{children}</div>
-    </section>
-  );
-}
-
 function ErrorDetail({ error }: { error: ApiError }) {
   return (
     <p>
       {error.message}
       {error.correlationId ? (
-        <span className="mt-1 block text-slate-500">Reference: {error.correlationId}</span>
+        <span className="mt-1 block text-slate-400">Reference: {error.correlationId}</span>
       ) : null}
     </p>
   );
@@ -50,9 +39,9 @@ function LivenessCard({ result }: { result: CheckResult<HealthResponse> }) {
   return (
     <Card title="API" badge={<StatusBadge tone="ok">Up</StatusBadge>}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-        <dt className="text-slate-500">Service</dt>
+        <dt className="text-slate-400">Service</dt>
         <dd>{result.data.service}</dd>
-        <dt className="text-slate-500">Version</dt>
+        <dt className="text-slate-400">Version</dt>
         <dd>{result.data.version}</dd>
       </dl>
     </Card>
@@ -83,6 +72,7 @@ function ReadinessCard({ result }: { result: CheckResult<ReadinessResponse> }) {
 }
 
 export default function StatusPage() {
+  useDocumentTitle("System status");
   const { health, readiness, overall, checkedAt, isRefreshing, refresh } = useServiceStatus();
   const summary = OVERALL[overall];
 
@@ -97,12 +87,7 @@ export default function StatusPage() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge tone={summary.tone}>{summary.label}</StatusBadge>
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={isRefreshing}
-            className="rounded-md border border-slate-600 px-3 py-1.5 text-sm font-medium hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="button" onClick={refresh} disabled={isRefreshing} className={BUTTON}>
             {isRefreshing ? "Checking…" : "Refresh"}
           </button>
         </div>
@@ -113,7 +98,7 @@ export default function StatusPage() {
         <ReadinessCard result={readiness} />
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-400">
         {checkedAt ? `Last checked ${checkedAt.toLocaleTimeString()}.` : "Not checked yet."} This
         page refreshes automatically every 30 seconds.
       </p>

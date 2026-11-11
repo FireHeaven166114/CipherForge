@@ -16,6 +16,21 @@ export default defineConfig([
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
       "no-console": "error",
+      // Provider text is untrusted, so nothing may turn a string into markup or code.
+      "no-eval": "error",
+      "no-implied-eval": "error",
+      "no-new-func": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "Render text through React instead of injecting HTML.",
+        },
+        {
+          selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]",
+          message: "Render text through React instead of injecting HTML.",
+        },
+      ],
     },
   },
   {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { hangingFetch, jsonResponse, stubFetch } from "../test/http";
-import { ApiError, request, setTokenProvider } from "./apiClient";
+import { ApiError, request, setTokenProvider, toApiError } from "./apiClient";
 
 afterEach(() => {
   setTokenProvider(null);
@@ -104,6 +104,33 @@ describe("request", () => {
     expect((error as ApiError).message).not.toContain("internal-host-7");
   });
 
+  it("reads how long to wait from Retry-After and ignores values it cannot trust", async () => {
+    const limited = (retryAfter?: string) =>
+      jsonResponse(
+        { error: { code: "rate_limited", message: "Too many investigations." } },
+        { status: 429, headers: retryAfter ? { "Retry-After": retryAfter } : {} },
+      );
+
+    stubFetch(() => limited("17"));
+    await expect(failureOf(request("/api/v1/thing"))).resolves.toMatchObject({
+      status: 429,
+      code: "rate_limited",
+      retryAfterSeconds: 17,
+    });
+
+    stubFetch(() => limited("9999999"));
+    await expect(failureOf(request("/api/v1/thing"))).resolves.toMatchObject({
+      retryAfterSeconds: 3600,
+    });
+
+    for (const value of [undefined, "soon", "-5", "1.5", "Wed, 21 Oct 2026 07:28:00 GMT"]) {
+      stubFetch(() => limited(value));
+      await expect(failureOf(request("/api/v1/thing"))).resolves.toMatchObject({
+        retryAfterSeconds: undefined,
+      });
+    }
+  });
+
   it("treats listed non-2xx statuses as results", async () => {
     stubFetch(() => jsonResponse({ status: "not_ready" }, { status: 503 }));
 
@@ -159,5 +186,17 @@ describe("request", () => {
     const error = await pending;
     expect(error).not.toBeInstanceOf(ApiError);
     expect(controller.signal.aborted).toBe(true);
+  });
+});
+
+describe("toApiError", () => {
+  it("keeps an ApiError and wraps anything else without leaking its message", () => {
+    const original = new ApiError({ message: "Nope.", status: 403, code: "forbidden" });
+    expect(toApiError(original)).toBe(original);
+
+    const wrapped = toApiError(new TypeError("secret internal detail"));
+    expect(wrapped).toBeInstanceOf(ApiError);
+    expect(wrapped).toMatchObject({ status: 0, code: "unexpected_error" });
+    expect(wrapped.message).not.toContain("secret");
   });
 });

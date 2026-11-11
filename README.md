@@ -17,7 +17,7 @@ The project is built in vertical slices, each one tested and committed before th
 | --- | --- | --- |
 | 1 | Foundation: FastAPI, React + TypeScript, PostgreSQL, Docker Compose, configuration, logging, auth shape | **Done.** The Docker stack itself is unverified, see [verification status](docs/deployment.md#verification-status) |
 | 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against recorded responses only, see [threat-intelligence.md](docs/threat-intelligence.md#verification-status) |
-| 3 | SOC dashboard: investigation view, IOC table and search, charts | Planned next |
+| 3 | SOC dashboard: investigation view, IOC table and search, charts | **Done** (React dashboard for the Phase 2 API). Works against `AUTH_MODE=dev` only: there is no browser sign-in yet |
 | 4-12 | Network sensor, detection, correlation, mini-SIEM, cases, Vault, integrations, Azure, DevSecOps | Not started |
 
 The roadmap follows the project specification; see [docs/architecture.md](docs/architecture.md) for
@@ -33,12 +33,13 @@ how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code.
   `SecurityAnalyst` and `User` roles. A local `dev` mode exists for development only.
 - Structured JSON logging with secret redaction, correlation IDs on every request and a uniform
   error format.
-- A React + TypeScript status page that shows the API and database health.
+- A React + TypeScript status page that shows the API and database health (kept at `/status` by the
+  Phase 3 dashboard).
 - PostgreSQL with SQLAlchemy and Alembic migrations.
 - Docker Compose for the whole stack, and a GitHub Actions pipeline (lint, tests, security checks,
   dependency audits, image build and a stack smoke test).
 
-**Phase 2: threat intelligence (API only, no dashboard yet)**
+**Phase 2: threat intelligence (API)**
 
 - `POST /api/v1/intel/investigate` takes one indicator (IPv4, IPv6, domain, URL or SHA-256; defanged
   forms such as `hxxp://example[.]com` are accepted), validates and normalises it, asks AbuseIPDB
@@ -56,13 +57,34 @@ how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code.
 The method is documented in [docs/threat-intelligence.md](docs/threat-intelligence.md) and the
 endpoints in [docs/api.md](docs/api.md).
 
+**Phase 3: investigation dashboard**
+
+A React single-page app over the Phase 2 API, with five screens:
+
+- **Overview**: how many indicators are stored, lookups in the last 24 hours, which providers are
+  configured, and the indicators by classification and by type (accessible bar charts with text
+  values, not colour alone), plus the five most recently checked indicators.
+- **Investigate**: enter an indicator and see the result at once. Each provider is shown on its own
+  card (status, freshness, its own evidence), followed by the CipherForge score with the factors
+  behind it, what is not known and the recommended next steps. Internal telemetry is shown as "not
+  connected" rather than left out.
+- **Indicators**: search, filter by type and classification, sort by recent check or by risk, and
+  page through the stored results. The filters live in the address, so a view can be bookmarked.
+- **Indicator details**: the stored record, with a button to re-check it with the providers.
+- **System status**: API and database health, as before.
+
+An indicator that no provider answered about is shown as **"Not assessed"**, never as low risk or
+clean. Text that comes from a provider is rendered as plain text, links to outside sites are built
+only from identifiers that match a strict pattern, and nothing is stored in the browser.
+
 ### Not implemented yet
 
-The investigation dashboard (Phase 3), packet capture, detection rules, event correlation, alerts,
+Sign-in in the browser, packet capture, detection rules, event correlation, alerts,
 incidents, file sharing and encryption, Redis, background workers (so a stored score is recomputed
 only when its indicator is investigated again), Azure deployment. The folders
 `sensor/` and `infra/` and the matching documents in `docs/` are placeholders that say so.
-The frontend has no sign-in flow yet (see [Limitations](#limitations)).
+The frontend has no sign-in flow yet (see [Limitations](#limitations)), so the dashboard needs
+`AUTH_MODE=dev` or a token supplied some other way.
 
 ## Quick start
 
@@ -112,10 +134,12 @@ proxies `/api`, `/health` and `/ready` to the API.
 
    On Windows PowerShell with script execution disabled, use `npm.cmd` instead of `npm`.
 
-### Try an investigation (API)
+### Try an investigation
 
 With `AUTH_MODE=dev` (the `.env.example` default) the local principal is a `SecurityAnalyst`, so no
-token is needed:
+token is needed. The easiest way is the dashboard: open <http://localhost:3000/investigate> (Docker)
+or <http://127.0.0.1:5173/investigate> (local frontend) and enter an indicator. The same lookup from
+the command line:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/v1/intel/investigate \
@@ -124,9 +148,12 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/intel/investigate \
 
 Without provider keys, both providers come back as `not_configured`, the score is 0 with confidence
 0 and `answered_sources` of 0, and the advice says nothing can be concluded. That is "not assessed",
-not "clean". To query the real services, put free keys in `.env`: `ABUSEIPDB_API_KEY`
-(<https://www.abuseipdb.com/account/api>) and `OTX_API_KEY` (<https://otx.alienvault.com/settings>).
-Restart the API after changing `.env`.
+not "clean"; the dashboard says so in words. To query the real services, put free keys in `.env`:
+`ABUSEIPDB_API_KEY` (<https://www.abuseipdb.com/account/api>) and `OTX_API_KEY`
+(<https://otx.alienvault.com/settings>). Restart the API after changing `.env`.
+
+Private, loopback and documentation-range addresses (for example `192.168.1.1` or `203.0.113.9`)
+are refused before any outside call, so use a public address to see a result.
 
 ## Quality checks
 
@@ -194,15 +221,18 @@ with all Linux capabilities dropped (and a read-only root filesystem for the API
 dependencies, and automated dependency and static analysis in CI. The threat-intelligence feature
 adds strict indicator validation (no server-side requests to internal targets), defensive parsing of
 untrusted provider data, provider keys kept server-side, a per-analyst rate limit and an
-append-only audit trail.
+append-only audit trail. The dashboard shows provider text as plain text, builds links to other
+sites only from fixed bases and strictly patterned identifiers, and its lint rules reject
+`dangerouslySetInnerHTML`, `innerHTML` assignment and `eval` (a pattern check, not a guarantee).
 The details, and what is deliberately left for later, are in [docs/security.md](docs/security.md)
 and [docs/threat-model.md](docs/threat-model.md).
 
 ## Limitations
 
 - **No sign-in in the frontend yet.** The API validates Entra ID tokens and the frontend client can
-  attach a bearer token, but there is no MSAL integration. Use `AUTH_MODE=dev` locally until an
-  Entra app registration and the sign-in flow are added.
+  attach a bearer token, but there is no MSAL integration. The dashboard therefore works only
+  against `AUTH_MODE=dev`, which is for local use; a real tenant needs an Entra app registration
+  and the sign-in flow first.
 - **TLS and HSTS are the job of the proxy in front of nginx.** The compose stack speaks plain HTTP
   on loopback.
 - **Single-instance assumptions.** The rate limiter keeps its counts in memory, per API process, so
@@ -215,6 +245,11 @@ and [docs/threat-model.md](docs/threat-model.md).
 - **Scores are advice, not verdicts.** They come from two community and commercial feeds, age with
   the evidence only when an indicator is investigated again, and say nothing about your own
   environment because no internal telemetry is connected yet.
+- **The dashboard has not shown real provider evidence.** It was exercised in a real browser against
+  the live API with no provider keys, so the only result seen live was "Not assessed"; the screens
+  for real evidence were checked with made-up example data and by tests. Its charts are plain
+  accessible bars, not a charting library, and there are no time-series charts yet (they need
+  telemetry that does not exist).
 - The container images, Compose file and CI workflow are checked statically and by the CI
   pipeline; see [docs/deployment.md](docs/deployment.md#verification-status).
 

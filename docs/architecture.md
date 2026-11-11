@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes what is built (Phases 1 and 2) and how the remaining modules are intended to
+This document describes what is built (Phases 1 to 3) and how the remaining modules are intended to
 plug in. Anything not built is labelled **planned**. The intended end state follows the project
 specification; nothing planned here should be read as implemented.
 
@@ -77,8 +77,8 @@ rules or incident handling yet.
 | Module | Purpose | Status | Where it lives or will live |
 | --- | --- | --- | --- |
 | Core platform | Config, logging, auth, errors, health | **Phase 1 done** | `backend/app/core`, `security`, `api`, `database` |
-| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API only; no UI yet) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py` |
-| SOC | Command-centre UI, triage, analytics | Status page only; investigation UI planned (Phase 3) | `frontend/src` |
+| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API) and **Phase 3 done** (analyst screens) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py`; UI in `frontend/src` |
+| SOC | Command-centre UI, triage, analytics | **Phase 3 done** for threat intelligence: overview, investigate, indicator list and detail, status. Alerts, incidents and live telemetry are not built | `frontend/src` |
 | Sentinel | Defensive network monitoring and anomaly detection | Not started | `sensor/`, `detection/` |
 | Core (correlation) | Event normalisation, correlation, scoring, rules | Indicator scoring only; event correlation and rules not started | `correlation/`, `detection/` |
 | Case | Incidents, notes, timelines | Not started | `services/`, `models/` |
@@ -150,20 +150,62 @@ including upgrade, downgrade and upgrade again on the real engine. Production re
 
 ## Frontend
 
-React 19 and TypeScript, built with Vite and styled with Tailwind CSS.
+React 19 and TypeScript, built with Vite and styled with Tailwind CSS (dark theme only). Routing is
+`react-router`; there is no state-management or charting library.
+
+| Route | Screen | Data |
+| --- | --- | --- |
+| `/` | Overview | `GET /intel/stats` and `GET /intel/indicators?sort=recent&limit=5` |
+| `/investigate` | Investigate an indicator | `POST /intel/investigate` |
+| `/indicators` | Search, filter and page the stored indicators. The filters live in the query string. | `GET /intel/indicators` |
+| `/indicators/:indicatorId` | The stored record, with a re-check button | `GET /intel/indicators/{id}`, `POST /intel/investigate` |
+| `/status` | API and database health | `GET /health`, `GET /ready` |
+| `*` | Page not found | none |
 
 ```text
-pages/        route-level screens (StatusPage)
-features/     domain logic with no React (overallStatus)
-hooks/        stateful logic (useServiceStatus polls every 30 s)
-services/     the API client and per-resource services
-components/   shared presentational components
-types/        API types mirroring the backend schemas
+pages/            route-level screens
+components/       shared presentational components (Card, Pagination, BarMeter, ErrorNotice, ...)
+components/intel/ the investigation view: verdict, one card per provider, score, internal evidence
+features/         domain logic with no React (labels, formatting, filters, links, summaries)
+hooks/            stateful logic (useApiResource, useInvestigate, useServiceStatus, useNow, useDocumentTitle)
+services/         the API client, per-resource services and the runtime response checks
+types/            API types mirroring the backend schemas
 ```
 
 All network access goes through `services/apiClient.ts`: relative URLs, a timeout, no caching,
 runtime shape checks on responses, and errors that surface only the server's sanitised message and
-correlation ID. A bearer token can be supplied from memory; tokens are never persisted.
+correlation ID. A token provider can be registered (for the future MSAL wrapper); the token is
+requested per call and never stored, and the app writes nothing to `localStorage`,
+`sessionStorage` or cookies.
+
+How the screens keep the evidence honest:
+
+- **Each provider is a card of its own**, with its status, freshness and evidence, before the
+  CipherForge assessment that combines them. A provider that was not configured, not queried or
+  failed is shown as exactly that, never as a clean answer.
+- **"Not assessed"** is shown whenever no provider answered (confidence 0). The classification
+  badge is replaced, so a score of 0 is not read as "low risk".
+- **Internal evidence** has its own card. While nothing feeds it, it says no internal telemetry is
+  connected rather than disappearing.
+- **Classification is never carried by colour alone**: each band has a symbol and a word, and the
+  charts print their values.
+- **Provider text is rendered as plain text.** React escapes it, nothing uses `innerHTML`, and
+  links to outside sites (OTX pulses, MITRE ATT&CK techniques) are built from a fixed base and an
+  identifier that matches a strict pattern, so provider data never chooses where a link goes.
+- **A stale answer cannot leak between indicators.** The detail page is keyed by indicator ID, and
+  a re-check result is held by the component for that ID, so moving to another indicator discards it.
+  A test pins this.
+- **Failures are explained, not swallowed.** `ErrorNotice` maps timeouts, network failures,
+  unreadable responses (a console and API that disagree on version), 401, 403, 404, 422, 429 (with
+  the `Retry-After` wait) and 5xx to plain-language titles, shows the server's own sanitised
+  message and the correlation ID for support, and offers "Try again" on the screens that load data.
+- **Accessibility basics**: a skip link, one `h1` per screen, a landmark `main` that receives focus
+  after each navigation, `aria-current` on the active navigation link, labelled controls, a polite
+  live region for progress and results, and a per-screen document title.
+
+There is no browser sign-in (MSAL) yet, so the screens work against `AUTH_MODE=dev` only. nginx
+serves `index.html` for unknown paths so that client routes survive a reload, and it proxies only
+`/api/`, `/health` and `/ready`, so a client route must never start with one of those.
 
 ## Design decisions
 
@@ -178,6 +220,9 @@ correlation ID. A bearer token can be supplied from memory; tokens are never per
 | Audit row written in the same transaction as the result | A stored score always has its audit row, and refused input is audited too. Reads are not audited (see [security.md](security.md)). |
 | `httpx2` instead of `httpx` | The maintained continuation of HTTPX; Starlette's test client prefers it. The provider adapters use it, and its request logging is silenced because it records full request URLs, which contain the indicators being investigated. |
 | TypeScript pinned to 6.0.3 | The latest stable `typescript-eslint` does not yet support TypeScript 7. |
+| React Router and no other runtime library for the UI | Phase 3 needs client-side routes and nothing else. Loading and error state is one small hook (`useApiResource`) that cancels the request in flight when the screen goes away or the query changes, so a late answer is never shown. A state-management or data-fetching library would add dependencies without removing code. |
+| Hand-built bars instead of a charting library | The two Phase 3 charts are small distributions. Each is a list whose text carries the number, with a bar drawn from the same value, so it is accessible by construction and needs no dependency. Recharts remains the planned choice for the time-series views that later telemetry will need; it is not installed. |
+| "Not assessed" is its own state in the UI | The API reports a score of 0 with confidence 0 when no provider answered. Showing that as "low" or "informational" would read as "checked and clean", so the UI shows a distinct badge and says that no provider answered. |
 | Exact version pins | Reproducible builds; Dependabot proposes updates and CI vets them. |
 
 ## How later phases plug in
@@ -193,3 +238,6 @@ correlation ID. A bearer token can be supplied from memory; tokens are never per
    scores are recomputed only when an indicator is investigated.
 5. Detection and response stay separate: the platform recommends actions and does not block
    anything automatically.
+6. **Screens** (`frontend/src/pages`) call one service file per API area (`services/`), keep domain
+   logic in `features/` and shared pieces in `components/`. A new module adds its route in
+   `App.tsx` and its link in the `NAV_ITEMS` list in `components/Layout.tsx`.

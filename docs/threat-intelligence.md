@@ -1,9 +1,10 @@
 # Threat intelligence (Intel)
 
-> **Status: implemented (Phase 2, backend).** The API looks up one indicator at a time, asks
-> AbuseIPDB and AlienVault OTX about it, stores each answer, scores the indicator with a documented
-> method and audits the lookup. The analyst screens for it are Phase 3. The provider adapters have
-> only been run against recorded sample responses, never against the live services; see
+> **Status: implemented (Phase 2, backend; Phase 3, analyst screens).** The API looks up one
+> indicator at a time, asks AbuseIPDB and AlienVault OTX about it, stores each answer, scores the
+> indicator with a documented method and audits the lookup. The dashboard shows the result; see
+> [The analyst screens](#the-analyst-screens-phase-3). The provider adapters have only been run
+> against recorded sample responses, never against the live services; see
 > [Verification status](#verification-status).
 
 ## Intent
@@ -219,6 +220,55 @@ what it does not: that no internal telemetry was available, which providers were
 which answers are stale, when a provider gave no activity date, when only one source supports the
 score, and that an absence of reports is not proof of safety.
 
+## The analyst screens (Phase 3)
+
+The dashboard is a client of the API described above. It adds no scoring logic of its own: it shows
+what the API returns, and where the API is silent it says so. See
+[architecture.md](architecture.md#frontend) for how it is built.
+
+| Screen | Route | What it does |
+| --- | --- | --- |
+| Overview | `/` | Totals from `GET /intel/stats` (indicators stored, lookups in the last 24 hours, providers configured), indicators by classification and by type, and the five most recently checked indicators. |
+| Investigate | `/investigate` | One field and an option to ask the providers again. It warns that the indicator is sent to each configured provider, checks only that the field is not empty and not longer than 2048 characters, and leaves everything else, including the refusal of non-public targets, to the server, whose reason it shows. |
+| Indicators | `/indicators` | Search (at most 256 characters), filter by type and classification, sort by recent check or by risk, and page through the results. The filters are kept in the address, so a view can be bookmarked and Back works. |
+| Indicator details | `/indicators/<id>` | The stored record, read without calling a provider, with a button that re-checks it. The id is checked as a UUID before any request is made. |
+
+Investigate and the detail page share one layout, in this order:
+
+1. **CipherForge assessment**: the indicator, its classification, score and confidence, status and
+   when it was last checked, the activity window and the tags providers gave it.
+2. **Provider answers**: one card per provider, each with the status the API reported
+   (Answered, No data, Not configured, Not supported, Rate limited, Error or Not queried), its
+   freshness, the evidence strength as a bar with its number, the activity dates, when it was
+   checked, whether that was live or a stored answer and until when it is valid. AbuseIPDB's own
+   abuse confidence is labelled as that provider's measure, separate from the CipherForge score.
+   OTX pulses and ATT&CK techniques link to OTX and MITRE.
+3. **How the score was built**: each factor with its points and the total, how many providers
+   answered, reported malicious activity and counted as support, and a collapsible description of
+   `intel-risk-v1`. Then **What is not known** (the API's uncertainty list) and **Recommended next
+   steps**, followed by "CipherForge only recommends. It never blocks, isolates or changes anything
+   on its own."
+4. **Internal evidence**: its own card, which says that no internal telemetry is connected while that
+   is true.
+
+Choices that keep the evidence honest:
+
+- **"Not assessed" is not "clean".** When no provider answered (`answered_sources` is 0 on an
+  investigation, confidence 0 on a list row), the badge reads "Not assessed" instead of
+  "Informational", the score and confidence figures are left out, and the text says that nothing
+  was checked. The overview counts such an indicator under "Informational", because the API scores
+  it 0, and says so beneath the chart.
+- **Nothing rests on colour.** Each classification has a symbol and a word, bars carry their
+  numbers, and a provider's status is a word, not just a colour.
+- **Geolocation is labelled for what it is**: "approximate; it does not show who is behind the
+  traffic". It is never called the attacker's location.
+- **Confidence and evidence strength are not probabilities**, and the cards say so.
+- **The explanation of `intel-risk-v1` is a copy** of the rules in `correlation/scoring.py`
+  (`ScorePanel.tsx`). It is shown only when the API reports that methodology, so a different method
+  is never described with the wrong rules. Change a constant in the scorer and you must change that
+  text too, and bump the method's name if the rules change.
+- **Provider text is shown as text.** See [security.md](security.md#frontend-controls-phase-3).
+
 ## Stored data and audit
 
 | Table | Holds |
@@ -256,7 +306,8 @@ The wider analysis is in [threat-model.md](threat-model.md) and [security.md](se
 
 Looking up an indicator sends it to a third party: AbuseIPDB for an IP address, and both providers
 for any indicator they support. Analysts should not look up anything they would not be comfortable
-sharing with a third party, and the lookups are audited. Provider terms of use and free-tier limits
+sharing with a third party, and the lookups are audited. The Investigate page says this beside the
+button. Provider terms of use and free-tier limits
 apply, and the platform must stay within them; the cache time, the refresh floor and the rate limit
 exist partly for that reason.
 
@@ -289,6 +340,10 @@ These are known and deliberate for the MVP:
   caller is not affected: that provider reports a timeout.
 - **Only two providers**, and no internal evidence. The result always says that no internal telemetry
   was available; correlation with your own logs arrives with the later phases.
+- **The dashboard has no sign-in.** It works against an API running with `AUTH_MODE=dev`; against
+  Entra ID authentication every screen shows "Not signed in" until the MSAL sign-in is built.
+- **The score explanation in the UI is a copy** of the scorer's rules, kept in step by hand (see
+  [The analyst screens](#the-analyst-screens-phase-3)).
 - **The audit protection can be removed by a database superuser** who drops the triggers. It guards
   against application bugs and ordinary SQL, not against someone who owns the database.
 
@@ -305,6 +360,13 @@ These are known and deliberate for the MVP:
   have **not** been confirmed against the live service. If a field is missing or renamed, the adapter
   treats it as unknown and the investigation reports a weaker result; it does not fail.
 - Run one real lookup with your own keys before relying on the output.
+- **The dashboard was exercised in a real browser** (headless Microsoft Edge) with the production
+  build behind a stand-in for nginx's headers and Content Security Policy, against the real API on
+  PostgreSQL with `AUTH_MODE=dev` and **no provider keys**. That covers the investigate, saved
+  record, re-check, list, search, deep-link, status and error flows, and found no policy violations.
+  The only investigation it could produce was the "Not assessed" one. The screens for real
+  evidence (a High result, provider details, OTX pulses) were checked in the browser only with
+  made-up example data and are covered by component tests, not by a live provider answer.
 
 ## Adding a provider
 

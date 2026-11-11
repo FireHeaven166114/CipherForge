@@ -1,19 +1,39 @@
 import type { ApiErrorEnvelope } from "../types/api";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MAX_RETRY_AFTER_SECONDS = 3600;
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly correlationId: string | undefined;
+  /** How long the server asked the caller to wait, when it said (429 responses). */
+  readonly retryAfterSeconds: number | undefined;
 
-  constructor(init: { message: string; status: number; code: string; correlationId?: string }) {
+  constructor(init: {
+    message: string;
+    status: number;
+    code: string;
+    correlationId?: string;
+    retryAfterSeconds?: number;
+  }) {
     super(init.message);
     this.name = "ApiError";
     this.status = init.status;
     this.code = init.code;
     this.correlationId = init.correlationId;
+    this.retryAfterSeconds = init.retryAfterSeconds;
   }
+}
+
+/** Callers of `request` only ever handle ApiError; anything else becomes a generic one. */
+export function toApiError(error: unknown): ApiError {
+  if (error instanceof ApiError) return error;
+  return new ApiError({
+    message: "Something went wrong while contacting the API.",
+    status: 0,
+    code: "unexpected_error",
+  });
 }
 
 type TokenProvider = () => Promise<string | null> | string | null;
@@ -55,6 +75,12 @@ async function readJson(response: Response): Promise<unknown> {
   } catch {
     return undefined;
   }
+}
+
+/** Only the delta-seconds form, which is what the API sends, is understood. */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (value === null || !/^\d{1,7}$/.test(value.trim())) return undefined;
+  return Math.min(Number(value), MAX_RETRY_AFTER_SECONDS);
 }
 
 function invalidResponse(status: number, correlationId: string | undefined): ApiError {
@@ -123,5 +149,6 @@ export async function request<T>(path: string, options: RequestOptions<T> = {}):
     status: response.status,
     code: envelope?.code ?? "http_error",
     correlationId: envelope?.correlation_id ?? headerCorrelationId,
+    retryAfterSeconds: parseRetryAfter(response.headers.get("Retry-After")),
   });
 }

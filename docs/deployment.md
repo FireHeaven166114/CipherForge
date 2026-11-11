@@ -21,7 +21,10 @@ Services, in start-up order:
 | `backend` | backend image | FastAPI on port 8000. Starts after the migration succeeds. | `8000` (`BACKEND_PORT`) |
 | `frontend` | nginx (unprivileged) | Static app and reverse proxy to the API. | `3000` (`FRONTEND_PORT`) |
 
-Open <http://localhost:3000>. `docker compose down` stops the stack and keeps the data;
+Open <http://localhost:3000>. That is the dashboard: Overview, Investigate, Indicators and System
+status. It needs the API's development authentication (the template's `AUTH_MODE=dev`), because
+there is no browser sign-in yet; against an API that requires Entra tokens every screen shows
+"Not signed in". `docker compose down` stops the stack and keeps the data;
 `docker compose down --volumes` also deletes the database.
 
 ### Configuration
@@ -91,7 +94,8 @@ This stack is a development and demonstration setup. Before it faces a network:
 1. **Terminate TLS in front of it** (a reverse proxy, Azure Front Door or Application Gateway) and
    have that layer set `Strict-Transport-Security`.
 2. **Set `ENVIRONMENT=production` and `AUTH_MODE=entra`**, with a real Entra app registration (below).
-   The API refuses to start in production with dev auth, SQLite or the template password.
+   The API refuses to start in production with dev auth, SQLite or the template password. Until
+   browser sign-in is built, the dashboard cannot be used against such an API.
 3. **Use a strong, unique database password** and keep `.env` out of version control. In Azure, use
    Key Vault and managed identities instead of a file.
 4. **Do not publish the database port.** Remove the `postgres` `ports` entry if you do not need
@@ -118,7 +122,8 @@ The API validates v2.0 access tokens issued by your tenant. In the Entra admin c
    audience) in the environment.
 
 Browser sign-in (MSAL) is not part of the frontend yet, so tokens must currently be obtained by
-other means when testing against a real tenant. This path has not been exercised against a real
+other means when testing against a real tenant, and the dashboard shows "Not signed in" against such
+an API. This path has not been exercised against a real
 tenant; it is covered only by tests that use generated signing keys.
 
 ## Azure (planned, not built)
@@ -130,14 +135,15 @@ described as infrastructure as code (Bicep or Terraform) in `infra/`. None of it
 
 ## Verification status
 
-What was actually run while building Phases 1 and 2, and what was not. The build machine had no
+What was actually run while building Phases 1 to 3, and what was not. The build machine had no
 Docker.
 
 | Item | Result |
 | --- | --- |
 | Backend tests | 787 passing and 1 skipped. The suite runs on SQLite and on a real PostgreSQL 16.2; the skip is intentional (SQLite has no `TRUNCATE`). SQLite alone gives 615 passing, because the PostgreSQL variants skip without `TEST_DATABASE_URL`. Line coverage 98%. |
 | Backend static checks | `ruff check`, `ruff format --check`, `bandit` and `pip-audit` all clean. |
-| Frontend checks | Type check, ESLint, 25 unit tests and the production build all pass. `npm audit` was clean when last run; CI runs it on every push. |
+| Frontend checks | Type check, ESLint, 154 unit and component tests (in 23 files) and the production build all pass, and `npm audit` reports no vulnerabilities. CI runs the same checks on every push. |
+| Dashboard in a real browser | Headless Microsoft Edge drove the production bundle against the live API on PostgreSQL 16.2 (`AUTH_MODE=dev`, no provider keys). The bundle was served by a small Node server standing in for nginx: it sends the same headers and Content Security Policy and proxies `/api`, `/health` and `/ready`. All 24 checks passed: navigation, the skip link and where focus lands, a rejected value showing the API's 422 message and its reference, investigating an indicator, opening and re-checking the saved record, the list with search and filters kept in the address, Back, a bookmarked deep link, the status page, an unknown route, a malformed id sending no request, and a 375 px wide screen without sideways scrolling. The browser reported no CSP violations. Provider evidence was not available, so the only investigation result seen live was "Not assessed"; the screens for real evidence were checked in the browser with made-up example data and by component tests. |
 | Database and API on PostgreSQL | Alembic upgrade, downgrade and upgrade again (both migrations) on PostgreSQL 16.2. A live server against it answered `/health`, `/ready` and `/api/v1/me`, and (without provider keys) the intel endpoints: investigate, refused private and hostile input (422, audited without the input), list, stats and an unknown id (404). The audit table refused a `DELETE`. Provider calls were not part of this check. |
 | Provider adapters (AbuseIPDB, OTX) | Tested against recorded response shapes through a stub HTTP transport. **Never called against the live services.** Endpoints, headers and the main fields were checked against AbuseIPDB's public documentation and AlienVault's own client library; the OTX pulse-level fields are not confirmed against a live response. |
 | Compose and `.env.example` against the settings | A test parses both files and fails if they drift from the application's defaults, if the keys reach the migration job, or if forwarded headers are trusted from public networks by default. |

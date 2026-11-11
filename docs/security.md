@@ -61,7 +61,8 @@ These come from the project specification and are applied as design rules:
 
 The built frontend contains no inline scripts or styles, which is what allows a strict CSP. The
 nginx configuration was exercised against a real nginx 1.30.6 build; see
-[deployment.md](deployment.md#verification-status).
+[deployment.md](deployment.md#verification-status). The Phase 3 bundle was later loaded in a real
+browser under the same policy; see [Frontend controls](#frontend-controls-phase-3).
 
 HSTS and TLS are intentionally **not** set by this stack: they belong to the TLS-terminating proxy
 or load balancer in front of it. Sending HSTS over plain HTTP is meaningless, and enabling it on a
@@ -124,6 +125,36 @@ log injection.
   changing or deleting audit rows, but a database superuser can drop them. Ship the rows to storage
   the application cannot write to if the trail must survive a database compromise.
 
+## Frontend controls (Phase 3)
+
+The dashboard displays text that third parties wrote (provider pulse names, tags, ISP names), so
+most of these controls are about displaying it safely and about not misleading the analyst.
+
+| Control | Detail |
+| --- | --- |
+| Provider text is only ever text | Everything a provider supplies is rendered as React text, which escapes it. ESLint fails the build on `dangerouslySetInnerHTML`, on assignments to `innerHTML` or `outerHTML`, and on `eval` and `new Function`, and the CSP would block inline script even if one slipped through. |
+| Outbound links cannot be steered | The only links to other sites go to OTX pulses and MITRE ATT&CK techniques. Each URL is built from a fixed base and an identifier that must match a strict pattern (24 hexadecimal characters for a pulse; `T1234` or `T1234.001` for a technique), so provider data never chooses a host, a path or a scheme. A value that does not match is shown as plain text. The links open in a new tab with `rel="noopener noreferrer"`. |
+| Route parameters are checked before use | The detail page accepts only a UUID. Anything else shows "not found" and sends no request, so a crafted link such as `/indicators/..%2F..%2Fhealth` cannot make the app call a different API path. Identifiers placed in a request are URL-encoded. |
+| Strict CSP is satisfied | The production build has no inline script, no `<style>` element and no `style=` attribute. It was loaded in a real browser under the exact nginx policy and reported no violations on any screen. |
+| Nothing is kept in the browser | No `localStorage`, `sessionStorage`, cookies or IndexedDB. When sign-in exists, the token is requested for each call and never stored. The Indicators page keeps its filters, including the search text, in the address so that views can be bookmarked; that text can therefore appear in browser history. What is typed on the Investigate page is not put in the address. |
+| No leak through links or caches | `Referrer-Policy: no-referrer` keeps the address from reaching OTX or MITRE. Requests use `cache: "no-store"` and the API replies `Cache-Control: no-store`. |
+| Responses are checked at run time | The client verifies the shape of each response before a screen uses it, so a mismatched version shows "Unexpected response from the API" instead of rendering missing fields. Errors show only the server's sanitised message and its correlation ID. |
+| No false reassurance | An indicator that no provider answered about is shown as "Not assessed", never as Informational or clean, and its score is not shown. Each provider is displayed separately, and advice is labelled as advice that CipherForge never carries out. A result for one indicator cannot appear under another: requests are cancelled when the screen changes, and the detail page is keyed by indicator. |
+| Disclosure is stated | The Investigate page says the indicator is sent to each configured provider, outside the organisation, and asks the analyst not to submit anything they may not share. |
+
+### Known limits of the Phase 3 controls
+
+- **No browser sign-in.** The dashboard works only against an API running `AUTH_MODE=dev`, which the
+  API refuses in production. Against Entra ID authentication every screen shows "Not signed in".
+- **The lint rule is a pattern match.** It catches the usual ways of injecting markup or code, not
+  every conceivable one (for example, a variable passed to `setTimeout` is not flagged). The CSP
+  and code review are the backstops.
+- **The browser checks used a stand-in for nginx.** The production bundle was served by a small Node
+  server that sends the same headers and policy as `frontend/nginx.conf`. nginx and the container
+  images were not run in the build environment (see [deployment.md](deployment.md#verification-status)).
+- **Search text is in the address bar.** Anyone with access to the browser profile, or to a shared
+  link, can see what was searched for.
+
 ## Dependency management
 
 Pins and the reasoning behind the non-obvious ones:
@@ -146,7 +177,8 @@ human reviews the change before merging.
 | A rate limit shared by several API replicas | The in-process limiter is per instance. Add one at the proxy, or Redis, before running more than one replica. |
 | Rate limiting for routes other than investigations, and brute-force protection | With the features that add them. Authentication failures are cheap to reject, but are not throttled. |
 | Audit log viewer, export and retention policy | Later phases. Today the table is write-only from the application's point of view. |
-| Sign-in in the browser (MSAL) | Not built. The dashboard works with `AUTH_MODE=dev`; a real tenant needs sign-in added. |
+| Sign-in in the browser (MSAL) | Not built. The dashboard works with `AUTH_MODE=dev` only; a real tenant needs sign-in added. |
+| Dashboard views of telemetry, alerts and incidents, and time-series charts | Later phases, with the data they show. |
 | CodeQL and Trivy (container and filesystem) scanning | Phase 12, once the repository is hosted. |
 | SBOM generation and image signing | Phase 12. |
 | Azure Key Vault, managed identities, Azure Monitor | Phase 11. |
