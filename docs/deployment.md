@@ -33,6 +33,41 @@ them entirely, the secure defaults apply and the API will refuse to start until 
 `DATABASE_URL` is built by Compose from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`.
 Because the password sits inside a URL, keep it to letters and digits.
 
+### Threat-intelligence providers
+
+IOC investigation (Phase 2) queries two outside services. Each is optional and needs its own free
+account key, which you put in `.env`:
+
+| Variable | Provider | Covers | Where to get a key |
+| --- | --- | --- | --- |
+| `ABUSEIPDB_API_KEY` | AbuseIPDB | IPv4 and IPv6 addresses | <https://www.abuseipdb.com/account/api> |
+| `OTX_API_KEY` | AlienVault OTX | IP addresses, domains, URLs and SHA-256 hashes | <https://otx.alienvault.com/settings> |
+
+- **No key is needed to start the stack.** A provider without a key is reported as
+  `not_configured` in every investigation, never silently skipped and never counted as "clean".
+- **Keys reach only the `backend` container.** The migration job and the web front end do not
+  receive them. The API never returns a key, and the log filter masks the exact value if it is ever
+  written.
+- The remaining settings have working defaults: `ABUSEIPDB_CACHE_TTL_SECONDS` (21600, six hours),
+  `OTX_CACHE_TTL_SECONDS` (43200, twelve hours), `PROVIDER_TIMEOUT_SECONDS` (10) and
+  `INVESTIGATE_RATE_LIMIT_PER_MINUTE` (30 per analyst, counted in memory by each API process, so
+  running several replicas multiplies it). Compose repeats the defaults from
+  `backend/app/core/config.py`, and a test fails if the two drift apart.
+- A longer cache time spends less of the free quota but shows older answers; every answer is shown
+  with its age either way.
+
+The source address recorded in the audit trail comes from the `X-Forwarded-For` header set by nginx,
+and the backend honours that header only from the networks in `FORWARDED_ALLOW_IPS`. Compose defaults
+this to the private ranges (`10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`) so the nginx container is
+trusted. Two things follow:
+
+- If you put a TLS-terminating proxy in front of nginx, nginx sees the proxy as the client and the
+  audit trail records the proxy's address. Configure nginx's `real_ip` module for that proxy, or
+  accept it. This stack does not do either for you.
+- Do not publish the backend port (8000) beyond loopback. A caller inside the trusted ranges that
+  reaches the backend directly can choose the address that gets recorded. The recorded value is
+  still checked to be a valid IP address, and the audited user always comes from the token.
+
 ### Migrations
 
 Schema changes are applied by the one-shot `migrate` service, never by the API at start-up. To run
@@ -61,8 +96,14 @@ This stack is a development and demonstration setup. Before it faces a network:
    Key Vault and managed identities instead of a file.
 4. **Do not publish the database port.** Remove the `postgres` `ports` entry if you do not need
    host access.
-5. **Add rate limiting** at the proxy until the API has its own (Phase 2).
-6. **Monitor and back up.** Ship the JSON logs somewhere durable and schedule database backups.
+5. **Add rate limiting at the proxy.** The API limits investigations per analyst, but in memory and
+   per process; it does not limit anything else, and it does not slow unauthenticated requests. Use
+   a shared limiter at the proxy, especially with more than one backend replica.
+6. **Keep provider keys in a secret store** (Key Vault in Azure), give them to the backend only, and
+   rotate them if they leak. Review the provider terms for your use before sending real indicators.
+7. **Monitor and back up.** Ship the JSON logs somewhere durable and schedule database backups. The
+   `audit_logs` table is append-only through the application and database triggers, but a database
+   superuser can still remove it or its triggers: restrict who has that role, and back it up.
 
 ## Entra ID setup (for `AUTH_MODE=entra`)
 
@@ -89,14 +130,17 @@ described as infrastructure as code (Bicep or Terraform) in `infra/`. None of it
 
 ## Verification status
 
-What was actually run while building Phase 1, and what was not. The build machine had no Docker.
+What was actually run while building Phases 1 and 2, and what was not. The build machine had no
+Docker.
 
 | Item | Result |
 | --- | --- |
-| Backend tests | 79 passing against a real PostgreSQL 16.2; 78 passing and 1 skipped (the PostgreSQL migration test) on SQLite alone. Coverage 95%. |
+| Backend tests | 787 passing and 1 skipped. The suite runs on SQLite and on a real PostgreSQL 16.2; the skip is intentional (SQLite has no `TRUNCATE`). SQLite alone gives 615 passing, because the PostgreSQL variants skip without `TEST_DATABASE_URL`. Line coverage 98%. |
 | Backend static checks | `ruff check`, `ruff format --check`, `bandit` and `pip-audit` all clean. |
 | Frontend checks | Type check, ESLint, 25 unit tests and the production build all pass. `npm audit` was clean when last run; CI runs it on every push. |
-| API against PostgreSQL | Alembic upgrade, downgrade and upgrade again; `/health`, `/ready` and `/api/v1/me` served correctly. |
+| Database and API on PostgreSQL | Alembic upgrade, downgrade and upgrade again (both migrations) on PostgreSQL 16.2. A live server against it answered `/health`, `/ready` and `/api/v1/me`, and (without provider keys) the intel endpoints: investigate, refused private and hostile input (422, audited without the input), list, stats and an unknown id (404). The audit table refused a `DELETE`. Provider calls were not part of this check. |
+| Provider adapters (AbuseIPDB, OTX) | Tested against recorded response shapes through a stub HTTP transport. **Never called against the live services.** Endpoints, headers and the main fields were checked against AbuseIPDB's public documentation and AlienVault's own client library; the OTX pulse-level fields are not confirmed against a live response. |
+| Compose and `.env.example` against the settings | A test parses both files and fails if they drift from the application's defaults, if the keys reach the migration job, or if forwarded headers are trusted from public networks by default. |
 | nginx configuration | Syntax checked and exercised with a real nginx 1.30.6 build (using a copy that differs only in listen address, document root and upstream): security headers appear once, caching and gzip, SPA fallback, 404 for missing assets, proxying of the API with the error envelope intact, correlation-ID replacement and the 413 body limit. |
 | `docker-compose.yml` | Validated against the Compose specification JSON schema. **Never run.** |
 | Dockerfiles | **Never built.** The base image tags were confirmed to exist. |

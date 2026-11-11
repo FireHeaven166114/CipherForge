@@ -1,14 +1,15 @@
 # Threat model
 
-A STRIDE analysis of what exists today (Phase 1: the API, its identity and database layer, the
-nginx front end, the container stack and the build pipeline). It is a living document: each new
-feature must extend it before it ships. **Vault in particular needs its own, separate threat
+A STRIDE analysis of what exists today: the Phase 1 platform (the API, its identity and database layer,
+the nginx front end, the container stack and the build pipeline) and the Phase 2 threat-intelligence
+backend (outbound provider calls, third-party data, the audit trail). It is a living document: each
+new feature must extend it before it ships. **Vault in particular needs its own, separate threat
 model before any code is written.**
 
 ## Scope and assumptions
 
 In scope: the browser-to-nginx-to-API-to-database path, token validation, configuration and
-secrets, the containers, and the CI pipeline.
+secrets, the containers, the CI pipeline, and the API's calls to AbuseIPDB and AlienVault OTX.
 
 Assumptions:
 
@@ -24,9 +25,9 @@ Assumptions:
 | --- | --- |
 | Entra access tokens | Bearer credentials. Anyone holding one can act as the user until it expires. |
 | Database credentials | Full access to stored intelligence, alerts and audit data. |
-| Provider API keys (Phase 2) | Quota and billing; may be abused or leaked. |
+| Provider API keys | Quota and billing; may be abused or leaked. |
 | Stored intelligence and, later, telemetry | Integrity matters most: a poisoned score misleads an analyst. |
-| Audit trail (Phase 2) | Must stay trustworthy to be useful after an incident. |
+| Audit trail | Must stay trustworthy to be useful after an incident. |
 | Availability of the API | Analysts depend on it during an incident. |
 
 ## Trust boundaries
@@ -38,7 +39,7 @@ flowchart LR
     Nginx -->|HTTP, internal network| API[FastAPI]
     API -->|SQL, internal network| DB[(PostgreSQL)]
     API -->|HTTPS| Entra[Entra JWKS]
-    API -->|HTTPS, Phase 2| Feeds[Threat feeds]
+    API -->|HTTPS| Feeds[AbuseIPDB and AlienVault OTX]
 ```
 
 Everything left of the API is untrusted input. Responses from Entra and the threat feeds are
@@ -54,7 +55,7 @@ treated as untrusted data too: they are validated and bounded before use.
 | 4 | A user calls an endpoint above their role | Elevation | Deny by default; `require_roles` on each route; 403 is logged. | Mitigated |
 | 5 | Another user's resource accessed with the same role | Elevation | Resource-level checks. No such resources exist yet. | Planned with each feature |
 | 6 | SQL injection | Tampering | SQLAlchemy parameterised queries only; no string-built SQL. | Mitigated |
-| 7 | Malformed input crashes or confuses the API | Tampering, DoS | Pydantic validation; strict IOC normalisation and length limits in Phase 2; nginx body limit of 64 KB. | Partly mitigated |
+| 7 | Malformed input crashes or confuses the API | Tampering, DoS | Pydantic validation; strict IOC normalisation and a 2048-character limit; nginx body limit of 64 KB. | Mitigated |
 | 8 | Secrets in logs, errors or health responses | Information disclosure | Redaction filter, `SecretStr`, value-free configuration errors, generic 500s, tested. | Mitigated |
 | 9 | Stack traces or SQL in responses | Information disclosure | One error envelope; unhandled exceptions return a generic message. | Mitigated |
 | 10 | Log injection through the correlation header | Repudiation, Tampering | Incoming IDs must match `[A-Za-z0-9._-]{8,64}` or are replaced. | Mitigated |
@@ -64,24 +65,36 @@ treated as untrusted data too: they are validated and bounded before use.
 | 14 | Wildcard CORS exposes the API to any site | Information disclosure | `*` is rejected; origins must be listed; no credentials mode. | Mitigated |
 | 15 | Database exposed to the network | Information disclosure | Port bound to `127.0.0.1`; the database is not published on other interfaces. | Mitigated locally |
 | 16 | Container breakout or privilege escalation | Elevation | Non-root users, all capabilities dropped, `no-new-privileges`, read-only root filesystem for the API. | Partly mitigated |
-| 17 | Request flood against the API | DoS | nginx body limit and timeouts only. No rate limiting yet. | **Gap** (Phase 2) |
+| 17 | Request flood against the API | DoS | A per-user limit on investigations (30 a minute, in memory and per process) with `429` and `Retry-After`; nginx body limit and timeouts. Other routes and unauthenticated requests are not throttled. | Partly mitigated |
 | 18 | Key service (JWKS) outage causes auth failures | DoS | Keys cached for an hour; outage returns 503 with a distinct code. | Mitigated |
-| 19 | Actions not attributable to a user | Repudiation | Correlation IDs on every request; the authenticated subject is logged on denials. A durable audit table is not built. | **Gap** (Phase 2) |
+| 19 | Actions not attributable to a user | Repudiation | Correlation IDs on every request; the authenticated subject is logged on denials; every investigation (including refused input) is written to the audit table with actor, target, result and correlation ID. Reads of stored indicators are not audited. | Partly mitigated |
 | 20 | Vulnerable or malicious dependency | Tampering | Exact pins, lockfile, `pip-audit`, `npm audit`, Dependabot, SHA-pinned Actions. Transitive Python packages are not hash-locked. | Partly mitigated |
 | 21 | Compromised CI or build | Tampering | Least-privilege workflow, no persisted credentials, no secrets in the pipeline. Image signing and scanning are not in place. | Partly mitigated |
 | 22 | Weak or default database password | Spoofing | Compose requires `POSTGRES_PASSWORD`, the API refuses the `CHANGE_ME` template password in production. | Mitigated |
 | 23 | TLS stripped or absent | Information disclosure | Not provided by this stack; the front proxy must terminate TLS and set HSTS. | Operator responsibility |
+| 24 | Server-side request forgery: an indicator (URL, domain or address) makes the server contact an internal host | Information disclosure, Tampering | The backend never fetches an indicator. It calls two fixed provider hosts and sends the indicator only as an escaped path or query value. Private, loopback, link-local, reserved and documentation addresses, and reserved or private-use domain names, are refused before any call. Redirects are not followed. | Mitigated |
+| 25 | Hostile provider data: markup or control characters in an OTX pulse name, oversized or malformed JSON, absurd counts or dates | Tampering, DoS | Parsed defensively into whitelisted fields with bounded sizes; text stripped of control and invisible characters; 2 MiB response cap; implausible dates discarded; a parser failure degrades one provider only. Provider text must be displayed as text. | Mitigated in the API; display is a front-end duty |
+| 26 | Provider outage, rate limit or slow response | DoS | A connect timeout and an overall timeout, run in parallel against one deadline; each failure becomes a labelled status; failures are never stored; an older answer is still shown as stale. | Mitigated |
+| 27 | A user burns the provider's free quota | DoS, cost | Per-user investigation limit, 6 and 12 hour cache times, a 60-second floor on `refresh`, and keys held server-side only. The limiter is per process, so replicas multiply the limit. | Partly mitigated |
+| 28 | Provider API key leaked through logs, responses, the wrong container or the HTTP client | Information disclosure | `SecretStr` settings masked by value in logs; never returned (the stats endpoint reports only whether one is set); given to the `backend` container only, not the migration job; HTTP client request logging silenced because it records full URLs. Each is tested. The `.env` file on the host is the operator's to protect. | Mitigated |
+| 29 | A single source, a stale answer or a poisoned feed mislabels an indicator | Tampering (analyst decisions) | Each provider is shown on its own; no score from one source exceeds 60; recency and corroboration are explicit factors; uncertainty and missing sources are listed; CipherForge recommends actions and never blocks anything. Feeds can still be wrong, so scores are advice. | Partly mitigated |
+| 30 | The audit source address is spoofed through `X-Forwarded-For` | Repudiation | The header is honoured only from private proxy networks; the value is stored only if it is a valid IP address; the actor comes from the token. A peer inside the trusted ranges that can reach the backend directly can still choose the recorded address. | Partly mitigated |
+| 31 | Audit rows altered or deleted | Repudiation, Tampering | The application has no update or delete path; database triggers reject `UPDATE` and `DELETE` on SQLite and PostgreSQL. A database superuser can drop the triggers. | Partly mitigated |
+| 32 | An analyst sends internal or sensitive indicators to a third party | Information disclosure | Non-public addresses and names are refused. Looking up anything else discloses it to the providers by design; the lookups are audited and the privacy note in [threat-intelligence.md](threat-intelligence.md#privacy-and-abuse-considerations) applies. | Accepted, documented |
 
 ## Residual risks and deliberate limits
 
 - There is no token revocation list; a stolen token works until it expires.
-- Rate limiting, the audit table and browser sign-in arrive in later phases (see
+- Browser sign-in arrives in a later phase, and the investigation rate limiter is per process (see
   [security.md](security.md#not-implemented-yet)).
 - Container hardening was not exercised on a Docker engine in the build environment; the pipeline
   smoke test is the first real run (see [deployment.md](deployment.md#verification-status)).
+- The provider adapters were tested against recorded responses only, never the live services (see
+  [threat-intelligence.md](threat-intelligence.md#verification-status)).
 
-## Threat-intelligence data (Phase 2 additions)
+## Threat-intelligence data (Phase 2)
 
-Phase 2 adds outbound calls and untrusted third-party data. Its threats (SSRF through URL
-indicators, poisoned or stale feed data, quota exhaustion, leaking API keys, over-trusting a single
-source) are analysed in [threat-intelligence.md](threat-intelligence.md) when that feature is built.
+Phase 2 adds outbound calls and untrusted third-party data. Rows 24 to 32 above analyse them. The
+design, the scoring method and the provider behaviour are in
+[threat-intelligence.md](threat-intelligence.md). Later phases that add internal telemetry or any
+automated response must extend this model first.

@@ -171,5 +171,8 @@ def configure_logging(settings: Settings) -> None:
         logger.handlers.clear()
         logger.propagate = True
     logging.getLogger("uvicorn.access").disabled = True
-    for name in ("httpx", "httpcore"):
+    # HTTP client libraries log full request URLs at INFO. That would copy analyst-submitted
+    # indicators (and any token embedded in a URL indicator) into the general application log,
+    # where redaction cannot know to hide them. The audit trail is the record of lookups.
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
         logging.getLogger(name).setLevel(logging.WARNING)

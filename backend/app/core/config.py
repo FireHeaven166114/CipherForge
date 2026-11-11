@@ -80,6 +80,28 @@ class Settings(BaseSettings):
 
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
+    # Threat-intelligence providers. A missing key disables that provider; it is reported
+    # as "not configured" rather than failing the lookup.
+    abuseipdb_api_key: SecretStr | None = None
+    otx_api_key: SecretStr | None = None
+    abuseipdb_cache_ttl_seconds: int = Field(default=6 * 3600, ge=60, le=30 * 86400)
+    otx_cache_ttl_seconds: int = Field(default=12 * 3600, ge=60, le=30 * 86400)
+    provider_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
+    investigate_rate_limit_per_minute: int = Field(default=30, ge=1, le=600)
+
+    @field_validator("abuseipdb_api_key", "otx_api_key", mode="after")
+    @classmethod
+    def _clean_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        raw = value.get_secret_value().strip()
+        if not raw:
+            return None
+        # Keys travel in HTTP headers: whitespace or control characters would corrupt them.
+        if not raw.isascii() or any(ord(char) <= 32 or ord(char) == 127 for char in raw):
+            raise ValueError("must not contain whitespace or control characters")
+        return SecretStr(raw)
+
     @field_validator("dev_auth_roles", mode="before")
     @classmethod
     def _parse_roles(cls, value: Any) -> Any:

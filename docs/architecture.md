@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes what is built (Phase 1) and how the remaining modules are intended to
+This document describes what is built (Phases 1 and 2) and how the remaining modules are intended to
 plug in. Anything not built is labelled **planned**. The intended end state follows the project
 specification; nothing planned here should be read as implemented.
 
-## System context (Phase 1)
+## System context
 
 ```mermaid
 flowchart LR
@@ -15,6 +15,7 @@ flowchart LR
         API --> DB[(PostgreSQL 16)]
     end
     API -.->|JWKS fetch, cached 1 h| Entra[Microsoft Entra ID]
+    API -.->|HTTPS, API key, only when a lookup needs it| Feeds[AbuseIPDB and AlienVault OTX]
 ```
 
 - The browser only talks to nginx. The SPA calls the API with relative URLs, so there is no CORS in
@@ -22,7 +23,36 @@ flowchart LR
 - nginx sets the security headers and the Content Security Policy for the static files and strips
   the duplicates the API adds, so each header appears once.
 - The API reaches Entra ID only to download signing keys. Tokens are validated locally.
+- The API reaches the two threat-intelligence providers only through their collectors, at fixed
+  hosts, and only when an investigation needs a fresh answer. The browser never contacts them and
+  never sees their keys.
 - Migrations are a separate one-shot step, not something the API does at startup.
+
+## Threat-intelligence flow (Phase 2)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API (intel router)
+    participant S as Intel service
+    participant D as PostgreSQL
+    participant P as AbuseIPDB / OTX
+    C->>A: POST /api/v1/intel/investigate
+    A->>A: validate token, require SecurityAnalyst or Admin, per-user rate limit
+    A->>S: raw indicator, refresh flag
+    S->>S: normalise and refuse non-public targets (refusals are audited)
+    S->>D: get or create the indicator, read cached answers
+    S->>P: only providers with no usable cached answer, in parallel, one deadline
+    P-->>S: an answer or a labelled failure
+    S->>D: store answers, store the new score, write the audit row (one commit)
+    S-->>A: each provider on its own, then the score, uncertainty and actions
+    A-->>C: JSON with Cache-Control no-store
+```
+
+The collectors, the scoring function and the service are separate so each can be tested without the
+others: the scorer is a pure function, the collectors run against a stub transport, and the service
+runs against SQLite and PostgreSQL. [threat-intelligence.md](threat-intelligence.md) has the details
+(normalisation, caching, the `intel-risk-v1` method, stored data and the limits).
 
 ## Target architecture (planned)
 
@@ -38,33 +68,38 @@ flowchart TD
     SOC --> Analyst[Analyst investigation and response]
 ```
 
-Only the first step for threat-intelligence feeds is the subject of Phase 2. The rest is not built.
+Only the threat-intelligence feed path (indicator in, enrichment, explainable score out) is built.
+It scores one indicator on demand; there is no event stream, correlation across events, detection
+rules or incident handling yet.
 
 ## Module map
 
-| Module | Purpose | Status | Where it will live |
+| Module | Purpose | Status | Where it lives or will live |
 | --- | --- | --- | --- |
 | Core platform | Config, logging, auth, errors, health | **Phase 1 done** | `backend/app/core`, `security`, `api`, `database` |
-| Intel | Threat-intelligence ingestion, IOC investigation, caching | Planned (Phase 2) | `collectors/`, `services/`, `api/v1/` |
+| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API only; no UI yet) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py` |
 | SOC | Command-centre UI, triage, analytics | Status page only; investigation UI planned (Phase 3) | `frontend/src` |
 | Sentinel | Defensive network monitoring and anomaly detection | Not started | `sensor/`, `detection/` |
-| Core (correlation) | Event normalisation, correlation, scoring, rules | Not started | `correlation/`, `detection/` |
+| Core (correlation) | Event normalisation, correlation, scoring, rules | Indicator scoring only; event correlation and rules not started | `correlation/`, `detection/` |
 | Case | Incidents, notes, timelines | Not started | `services/`, `models/` |
 | Vault | Client-side encrypted file sharing | Not started; needs a threat model first | `docs/encryption-design.md` |
 
 ## Backend
 
 `backend/app` is organised by responsibility, with one-way dependencies: `api` calls `services`,
-which use `models`, `collectors` and `detection`; `core` and `security` are shared by everything.
+which use `models`, `collectors` and `correlation`; `core` and `security` are shared by everything.
 
 | Package | Responsibility |
 | --- | --- |
 | `api/` | HTTP routes and request dependencies. No business logic. Versioned under `/api/v1`. |
 | `core/` | Settings, structured logging and redaction, correlation ID context, error envelope, middleware. |
-| `security/` | Entra ID token validation and role-based access control. |
+| `security/` | Entra ID token validation, role-based access control and the in-memory rate limiter. |
 | `database/` | Engine and session factory, the readiness probe. |
 | `models/`, `schemas/` | SQLAlchemy tables and Pydantic request/response models. |
-| `services/`, `collectors/`, `detection/`, `correlation/`, `workers/` | Placeholders for later phases. |
+| `services/` | Indicator normalisation, the investigation workflow (caching, scoring, storage) and the audit writer. |
+| `collectors/` | One adapter per provider (AbuseIPDB, OTX) behind a common interface, plus response sanitising helpers. |
+| `correlation/` | The pure, explainable scoring function (`intel-risk-v1`). |
+| `detection/`, `workers/` | Placeholders for later phases. |
 
 ### Request lifecycle
 
@@ -107,8 +142,11 @@ designed with the feature that needs it.
 ### Data layer
 
 SQLAlchemy 2 with Alembic. Constraint names follow a naming convention so migrations stay
-deterministic. Unit tests run on SQLite; a PostgreSQL test (enabled with `TEST_DATABASE_URL`)
-exercises upgrade and downgrade on the real engine. Production requires PostgreSQL.
+deterministic. Two migrations exist: `0001` (the baseline) and `0002_threat_intel`, which adds
+`threat_sources`, `threat_indicators`, `threat_observations` and `audit_logs`. The audit table is
+append-only: triggers on SQLite and PostgreSQL reject `UPDATE` and `DELETE`. Unit tests run on
+SQLite and, when `TEST_DATABASE_URL` is set, again on PostgreSQL (the same tests, parametrised),
+including upgrade, downgrade and upgrade again on the real engine. Production requires PostgreSQL.
 
 ## Frontend
 
@@ -134,17 +172,24 @@ correlation ID. A bearer token can be supplied from memory; tokens are never per
 | App factory, no module-level `app` | Importing the module has no side effects; tests build apps with explicit settings. |
 | Fail-closed settings | A missing or unsafe setting stops the API rather than weakening security silently. |
 | Migrations as a separate step | No race between replicas, and the API process never changes the schema. |
-| PostgreSQL as the cache for provider results (Phase 2) | The specification says not to add a queue or cache service just to make the MVP look complex. |
-| `httpx2` instead of `httpx` | The maintained continuation of HTTPX; Starlette's test client prefers it. Provider adapters will use it. |
+| PostgreSQL as the cache for provider results | The specification says not to add a queue or cache service just to make the MVP look complex. Answers are stored as observations; the cache is a freshness check against them, so a restart loses nothing. |
+| Scoring is a pure function of the stored answers | The same evidence always gives the same score, every point is a listed factor, and the method (`intel-risk-v1`) is tested with worked examples instead of being trusted. |
+| One provider failing never fails the investigation | Each provider ends in a labelled status (for example `ok`, `no_data`, `not_configured`, `rate_limited` or `error`). Failures are shown, counted as uncertainty and never stored as answers. |
+| Audit row written in the same transaction as the result | A stored score always has its audit row, and refused input is audited too. Reads are not audited (see [security.md](security.md)). |
+| `httpx2` instead of `httpx` | The maintained continuation of HTTPX; Starlette's test client prefers it. The provider adapters use it, and its request logging is silenced because it records full request URLs, which contain the indicators being investigated. |
 | TypeScript pinned to 6.0.3 | The latest stable `typescript-eslint` does not yet support TypeScript 7. |
 | Exact version pins | Reproducible builds; Dependabot proposes updates and CI vets them. |
 
 ## How later phases plug in
 
 1. **Collectors** (`collectors/`) wrap one provider each behind a common interface and return a
-   normalised observation. They are tested against recorded responses, never live APIs.
-2. **Services** (`services/`) orchestrate collectors, persistence, caching and scoring.
-3. **Detection rules** (`detection/`) live in one place, not in controllers or UI code.
-4. **Workers** (`workers/`) appear only when scheduled refresh or correlation needs them.
+   normalised observation. They are tested against recorded responses, never live APIs. A new
+   provider is one collector class, its settings and one registry entry (see
+   [threat-intelligence.md](threat-intelligence.md#adding-a-provider)).
+2. **Services** (`services/`) orchestrate collectors, persistence, caching and scoring. Phase 2
+   built this for indicators; internal telemetry and incidents will add their own services.
+3. **Detection rules** (`detection/`) live in one place, not in controllers or UI code. Not built.
+4. **Workers** (`workers/`) appear only when scheduled refresh or correlation needs them. Not built;
+   scores are recomputed only when an indicator is investigated.
 5. Detection and response stay separate: the platform recommends actions and does not block
    anything automatically.

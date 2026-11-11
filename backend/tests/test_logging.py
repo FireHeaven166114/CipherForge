@@ -71,6 +71,17 @@ def test_configure_logging_registers_settings_secrets(
     assert "Zx9-Very-Secret-Pw" not in redact("connect failed using Zx9-Very-Secret-Pw")
 
 
+@pytest.mark.parametrize(
+    "name", ["httpx", "httpx2", "httpcore", "httpcore2", "httpcore2.http11", "httpcore2.connection"]
+)
+def test_configure_logging_silences_http_client_libraries(
+    make_settings: Callable[..., Settings], name: str
+) -> None:
+    configure_logging(make_settings(log_level="DEBUG"))
+
+    assert not logging.getLogger(name).isEnabledFor(logging.INFO)
+
+
 def test_redact_value_uses_field_names() -> None:
     assert redact_value("api_key", "anything") == REDACTED
     assert redact_value("authorization", "anything") == REDACTED

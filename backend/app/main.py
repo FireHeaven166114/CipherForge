@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.v1.router import api_router
+from app.collectors.registry import build_collectors, build_http_client
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging_config import configure_logging
@@ -28,14 +29,26 @@ from app.core.middleware import (
 )
 from app.database.session import build_engine, build_session_factory
 from app.security.auth import EntraTokenValidator
+from app.security.rate_limit import SlidingWindowRateLimiter
+from app.services.intel_service import IntelService
 
 logger = logging.getLogger("cipherforge.app")
+
+
+def build_intel_service(settings: Settings) -> IntelService:
+    http_client = build_http_client(settings)
+    return IntelService(
+        build_collectors(settings, http_client),
+        http_client=http_client,
+        provider_timeout_seconds=settings.provider_timeout_seconds,
+    )
 
 
 def create_app(
     settings: Settings | None = None,
     *,
     token_validator: EntraTokenValidator | None = None,
+    intel_service: IntelService | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
@@ -43,6 +56,8 @@ def create_app(
     engine = build_engine(settings)
     if token_validator is None and settings.auth_mode == "entra":
         token_validator = EntraTokenValidator.from_settings(settings)
+    if intel_service is None:
+        intel_service = build_intel_service(settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -55,6 +70,7 @@ def create_app(
             },
         )
         yield
+        intel_service.close()
         engine.dispose()
         logger.info("shutdown")
 
@@ -72,6 +88,8 @@ def create_app(
     app.state.engine = engine
     app.state.session_factory = build_session_factory(engine)
     app.state.token_validator = token_validator
+    app.state.intel_service = intel_service
+    app.state.rate_limiter = SlidingWindowRateLimiter(settings.investigate_rate_limit_per_minute)
 
     register_exception_handlers(app)
 

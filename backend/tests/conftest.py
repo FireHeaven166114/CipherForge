@@ -8,21 +8,28 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import jwt
 import pytest
+from alembic import command
+from alembic.config import Config
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
 from app.core.logging_config import clear_registered_secrets
 from app.main import create_app
 from app.security.auth import EntraTokenValidator
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 TENANT_ID = "11111111-2222-3333-4444-555555555555"
 CLIENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 ISSUER = f"https://login.microsoftonline.com/{TENANT_ID}/v2.0"
@@ -40,6 +47,10 @@ _ENV_VARS = (
     "CORS_ORIGINS",
     "ABUSEIPDB_API_KEY",
     "OTX_API_KEY",
+    "ABUSEIPDB_CACHE_TTL_SECONDS",
+    "OTX_CACHE_TTL_SECONDS",
+    "PROVIDER_TIMEOUT_SECONDS",
+    "INVESTIGATE_RATE_LIMIT_PER_MINUTE",
 )
 
 
@@ -71,6 +82,44 @@ def make_settings(tmp_path: Any) -> Callable[..., Settings]:
 def client(make_settings: Callable[..., Settings]) -> Iterator[TestClient]:
     with TestClient(create_app(make_settings())) as test_client:
         yield test_client
+
+
+# --- Migrated database --------------------------------------------------------
+
+
+def _migrate(url: str, *, down: bool = False) -> None:
+    """Run the real Alembic migrations, so tests exercise the schema and triggers we ship."""
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        with engine.begin() as connection:
+            config = Config(str(BACKEND_DIR / "alembic.ini"))
+            config.attributes["connection"] = connection
+            if down:
+                command.downgrade(config, "base")
+            else:
+                command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(params=["sqlite", "postgresql"])
+def db_url(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[str]:
+    """A freshly migrated database. PostgreSQL runs only when TEST_DATABASE_URL is set."""
+    if request.param == "sqlite":
+        url = f"sqlite+pysqlite:///{(tmp_path / 'migrated.db').as_posix()}"
+        _migrate(url)
+        yield url
+        return
+
+    url = os.getenv("TEST_DATABASE_URL", "")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL not set")
+    _migrate(url)
+    try:
+        yield url
+    finally:
+        # audit_logs rejects TRUNCATE by design, so reset by dropping the schema.
+        _migrate(url, down=True)
 
 
 # --- Entra token helpers ------------------------------------------------------

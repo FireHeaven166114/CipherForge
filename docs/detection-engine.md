@@ -2,8 +2,9 @@
 
 > **Status: not implemented.** This page records the intended design from the project specification
 > (Sentinel, Core and the mini-SIEM, roadmap phases 4 to 7) so the later code has something to be
-> checked against. Nothing described here exists in the codebase yet. The only scoring that is being
-> built is for threat-intelligence indicators; see [threat-intelligence.md](threat-intelligence.md).
+> checked against. Nothing described here exists in the codebase yet. The only scoring that exists
+> is for threat-intelligence indicators (Phase 2, built); see
+> [threat-intelligence.md](threat-intelligence.md).
 
 ## Intent
 
@@ -48,6 +49,11 @@ A network anomaly extracts its source indicator, looks it up (cache first), comb
 evidence with internal evidence and produces an explainable score. External reputation **enriches**
 detection and never gates it: a high-confidence internal anomaly matters even when no feed has seen
 the source.
+
+The lookup half exists: the Phase 2 investigation service already normalises an indicator, answers
+from its stored results when they are fresh, queries the providers otherwise and scores the result
+with the `intel-risk-v1` method (see [threat-intelligence.md](threat-intelligence.md)). It reports
+`internal_evidence` as unavailable today. Combining it with internal events is the planned work.
 
 ## Alerts
 

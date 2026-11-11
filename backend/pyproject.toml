@@ -1,6 +1,6 @@
 [project]
 name = "cipherforge-backend"
-version = "0.1.0"
+version = "0.2.0"
 description = "CipherForge API"
 requires-python = ">=3.12"
 # Dependencies live in requirements*.txt so container builds are reproducible.

@@ -93,6 +93,37 @@ log injection.
   checkout does not persist credentials.
 - Dependabot is configured for pip, npm, Docker, Compose and GitHub Actions.
 
+## Implemented controls (Phase 2: threat intelligence)
+
+| Control | Detail |
+| --- | --- |
+| Authorisation | Every `/api/v1/intel` route requires `SecurityAnalyst` or `Admin`; everything else is denied. |
+| Rate limiting | `POST /investigate` is limited for each authenticated user (default 30 a minute) and answers `429` with `Retry-After`. Authorisation runs first, so a caller who is not allowed in never uses anyone's budget. The limiter is in memory and per process (see the gaps below). |
+| Audit trail | Every investigation, including refused input, writes an `audit_logs` row (actor, action `IOC_LOOKUP`, target, result, source address, correlation ID) in the same transaction as the work it describes. Database triggers reject `UPDATE` and `DELETE`, on SQLite and PostgreSQL. Secrets and provider payloads are never recorded. |
+| Provider API keys | Read from the environment as `SecretStr`, masked in logs by exact value, never returned by the API (the stats endpoint only says whether a key is set), and passed to the `backend` container only, not to the one-shot `migrate` job. A test fails if Compose drifts from this. |
+| No request forgery | The backend contacts two fixed provider hosts. An indicator is validated first (non-public addresses and reserved names are refused), appears in a request only as an escaped path or query value, and redirects are not followed. |
+| Bounded provider calls | 5-second connect timeout, a configurable overall timeout, a 2 MiB response cap and a small connection pool. Providers run in parallel against one shared deadline, and a failure degrades that provider only. |
+| Untrusted provider data | Parsed defensively into whitelisted, size-limited fields. Text is stripped of control and invisible characters and truncated, counts are bounded, and implausible dates are discarded. Free text from a provider is community-supplied and must only be displayed as text. |
+| No indicator or key in logs | HTTP client libraries log full request URLs at INFO, which would contain the indicator and could contain a credential. The `httpx`, `httpx2`, `httpcore` and `httpcore2` loggers are silenced, and a test guards it. Application logs record the indicator type and score, never the value. |
+| Valid source address only | The audited address is stored only if it is a valid IP address. Behind nginx it comes from `X-Forwarded-For`, which uvicorn does not validate, so a hostile value is dropped rather than stored. |
+| Strict indicator input | Length limit, whitespace and invisible characters refused, SHA-256 only, `http`/`https` URLs only, no credentials in URLs. Error messages never echo the input. |
+
+### Known limits of the Phase 2 controls
+
+- **Forwarded headers in Compose.** The backend trusts `X-Forwarded-For` from private network ranges
+  (`FORWARDED_ALLOW_IPS`, so that nginx's address is replaced by the real client's). A peer inside
+  those ranges that can reach the backend directly can therefore choose the *source address* recorded
+  in the audit row. The actor comes from the token and cannot be forged this way, and rate limits are
+  keyed by user, not address. Keep the backend port on loopback (the default) and the backend off
+  other networks.
+- **A TLS proxy in front of nginx.** nginx then sees the proxy's address, so the audit trail records
+  the proxy's address unless nginx is also configured to read the real client address (`real_ip`).
+  That is not configured.
+- **Reads are not audited.** Looking up a stored indicator records nothing; only investigations do.
+- **Audit protection is not absolute.** The triggers stop application code and ordinary SQL from
+  changing or deleting audit rows, but a database superuser can drop them. Ship the rows to storage
+  the application cannot write to if the trail must survive a database compromise.
+
 ## Dependency management
 
 Pins and the reasoning behind the non-obvious ones:
@@ -100,7 +131,7 @@ Pins and the reasoning behind the non-obvious ones:
 | Dependency | Decision |
 | --- | --- |
 | Python packages | Direct dependencies pinned in `requirements.txt`; transitive packages float within them. `pip-audit` checks the resolved set in CI. A hash-locked file (`pip-compile --generate-hashes`) is a possible later hardening. |
-| `httpx2` | The maintained continuation of HTTPX. Starlette's test client prefers it, and the Phase 2 provider adapters use it. |
+| `httpx2` | The maintained continuation of HTTPX. Starlette's test client prefers it, and the provider adapters use it. Its request logging is silenced because it records full URLs. |
 | TypeScript 6.0.3 | The latest stable `typescript-eslint` does not support TypeScript 7 yet. Revisit when it does. |
 | `minimatch` override (`11.0.4`) | Dev-tooling dependencies pulled in a `minimatch` version affected by a denial-of-service advisory (GHSA-g3hv-75wg-m249). The override keeps `npm audit` at zero findings. Remove it once upstream packages update. |
 | Node 24 image | The toolchain needs a recent Node (Vitest 5 requires 22.12 or newer, and `package.json` sets `engines` to 22.22 or newer); CI and the Docker build use Node 24. |
@@ -112,9 +143,10 @@ human reviews the change before merging.
 
 | Gap | Planned |
 | --- | --- |
-| Rate limiting and brute-force protection on API routes | Phase 2 (in-process limiter; Redis once there is more than one instance). |
-| Audit log table with protected, append-oriented storage | Phase 2 (`IOC_LOOKUP`), extended in later phases. |
-| Sign-in in the browser (MSAL) | With the SOC dashboard work. |
+| A rate limit shared by several API replicas | The in-process limiter is per instance. Add one at the proxy, or Redis, before running more than one replica. |
+| Rate limiting for routes other than investigations, and brute-force protection | With the features that add them. Authentication failures are cheap to reject, but are not throttled. |
+| Audit log viewer, export and retention policy | Later phases. Today the table is write-only from the application's point of view. |
+| Sign-in in the browser (MSAL) | Not built. The dashboard works with `AUTH_MODE=dev`; a real tenant needs sign-in added. |
 | CodeQL and Trivy (container and filesystem) scanning | Phase 12, once the repository is hosted. |
 | SBOM generation and image signing | Phase 12. |
 | Azure Key Vault, managed identities, Azure Monitor | Phase 11. |
