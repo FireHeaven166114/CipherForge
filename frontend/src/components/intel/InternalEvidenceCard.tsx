@@ -7,6 +7,7 @@ export default function InternalEvidenceCard({ evidence }: { evidence: InternalE
   return (
     <Card
       title="Internal evidence"
+      code="INT"
       badge={
         <StatusBadge tone={evidence.available ? "ok" : "neutral"}>
           {evidence.available ? "Available" : "Not available"}

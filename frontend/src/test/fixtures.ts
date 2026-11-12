@@ -1,8 +1,12 @@
 import type {
+  FacetEntry,
   Indicator,
   IndicatorPage,
   Investigation,
+  Overview,
+  ProviderInfo,
   ProviderView,
+  SampleIndicator,
   Score,
   Stats,
 } from "../types/intel";
@@ -225,20 +229,164 @@ export function makeStats(overrides: Partial<Stats> = {}): Stats {
     by_classification: { informational: 4, low: 3, medium: 2, high: 2, critical: 1 },
     by_type: { ipv4: 6, ipv6: 1, domain: 3, url: 1, sha256: 1 },
     lookups_last_24h: 9,
-    providers: [
+    providers: makeProviders(),
+    ...overrides,
+  };
+}
+
+export function makeProviders(simulated = false): ProviderInfo[] {
+  return [
+    {
+      name: "abuseipdb",
+      display_name: "AbuseIPDB",
+      configured: true,
+      supported_types: ["ipv4", "ipv6"],
+      simulated,
+    },
+    {
+      name: "otx",
+      display_name: "AlienVault OTX",
+      configured: false,
+      supported_types: ["ipv4", "ipv6", "domain", "url", "sha256"],
+      simulated,
+    },
+  ];
+}
+
+export function makeSample(overrides: Partial<SampleIndicator> = {}): SampleIndicator {
+  return {
+    indicator_id: INDICATOR_ID,
+    indicator_type: "ipv4",
+    indicator_value: "203.0.113.9",
+    risk_score: 80,
+    classification: "high",
+    ...overrides,
+  };
+}
+
+export function makeFacet(
+  key: string,
+  count: number,
+  maxRisk: number,
+  samples: SampleIndicator[] = [makeSample({ risk_score: maxRisk })],
+): FacetEntry {
+  return { key, count, max_risk: maxRisk, samples };
+}
+
+export const OVERVIEW_DAYS = [
+  "2026-05-01",
+  "2026-05-02",
+  "2026-05-03",
+  "2026-05-04",
+  "2026-05-05",
+  "2026-05-06",
+  "2026-05-07",
+  "2026-05-08",
+  "2026-05-09",
+  "2026-05-10",
+  "2026-05-11",
+  "2026-05-12",
+  "2026-05-13",
+  "2026-05-14",
+] as const;
+
+const LOOKUPS_PER_DAY = [0, 1, 0, 2, 3, 1, 4, 2, 5, 3, 6, 4, 7, 9];
+const HIGH_RISK_PER_DAY = [0, 0, 0, 1, 1, 0, 2, 1, 2, 1, 2, 2, 3, 3];
+
+/** A small, internally consistent overview: every breakdown adds up to the 12 tracked indicators. */
+export function makeOverview(overrides: Partial<Overview> = {}): Overview {
+  const hours = (peak: number): number[] =>
+    Array.from({ length: 24 }, (_, hour) => (hour === 9 ? peak : hour === 14 ? 1 : 0));
+  return {
+    generated_at: "2026-05-14T12:00:00Z",
+    kpis: {
+      total_indicators: 12,
+      new_indicators_24h: 3,
+      new_indicators_prev_24h: 1,
+      lookups_24h: 9,
+      lookups_prev_24h: 4,
+      high_risk_indicators: 3,
+      critical_indicators: 1,
+      not_assessed_indicators: 1,
+    },
+    by_classification: { informational: 4, low: 3, medium: 1, high: 2, critical: 1, not_assessed: 1 },
+    by_type: { ipv4: 6, ipv6: 1, domain: 3, url: 1, sha256: 1 },
+    matrix: [
       {
-        name: "abuseipdb",
-        display_name: "AbuseIPDB",
-        configured: true,
-        supported_types: ["ipv4", "ipv6"],
+        indicator_type: "ipv4",
+        counts: { informational: 2, low: 1, medium: 0, high: 2, critical: 1, not_assessed: 0 },
       },
       {
-        name: "otx",
-        display_name: "AlienVault OTX",
-        configured: false,
-        supported_types: ["ipv4", "ipv6", "domain", "url", "sha256"],
+        indicator_type: "ipv6",
+        counts: { informational: 1, low: 0, medium: 0, high: 0, critical: 0, not_assessed: 0 },
+      },
+      {
+        indicator_type: "domain",
+        counts: { informational: 0, low: 1, medium: 1, high: 0, critical: 0, not_assessed: 1 },
+      },
+      {
+        indicator_type: "url",
+        counts: { informational: 0, low: 1, medium: 0, high: 0, critical: 0, not_assessed: 0 },
+      },
+      {
+        indicator_type: "sha256",
+        counts: { informational: 1, low: 0, medium: 0, high: 0, critical: 0, not_assessed: 0 },
       },
     ],
+    series: OVERVIEW_DAYS.map((day, index) => ({
+      day,
+      lookups: LOOKUPS_PER_DAY[index] ?? 0,
+      high_risk_lookups: HIGH_RISK_PER_DAY[index] ?? 0,
+      new_indicators: index === OVERVIEW_DAYS.length - 1 ? 3 : index % 3,
+    })),
+    activity: OVERVIEW_DAYS.slice(7).map((day, index) => ({ day, hours: hours(index + 2) })),
+    countries: [
+      makeFacet("NL", 4, 80),
+      makeFacet("US", 3, 64, [
+        makeSample({
+          indicator_id: "7a1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+          indicator_value: "198.51.100.7",
+          risk_score: 64,
+          classification: "high",
+        }),
+      ]),
+      makeFacet("DE", 1, 12),
+    ],
+    malware_families: [makeFacet("Examplebot", 2, 80), makeFacet("Sampleloader", 1, 45)],
+    attack_techniques: [makeFacet("T1566", 2, 80), makeFacet("T1059.001", 1, 80)],
+    tags: [makeFacet("scanner", 3, 80), makeFacet("tor", 2, 80), makeFacet("phishing", 1, 55)],
+    top_risk: [
+      makeIndicator(),
+      makeIndicator({
+        indicator_id: "7a1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+        indicator_value: "198.51.100.7",
+        risk_score: 64,
+        classification: "high",
+        tags: ["scanner"],
+      }),
+    ],
+    recent: [
+      makeIndicator({
+        indicator_id: "1b2c3d4e-5f6a-4b7c-8d9e-0a1b2c3d4e5f",
+        indicator_type: "domain",
+        indicator_value: "login.example.test",
+        risk_score: 0,
+        classification: "informational",
+        confidence: 0,
+        tags: [],
+        status: "stale",
+      }),
+      makeIndicator(),
+    ],
+    providers: makeProviders(),
+    scope: {
+      series_days: 14,
+      activity_days: 7,
+      lookups_scanned: 38,
+      lookups_truncated: false,
+      answers_scanned: 12,
+      answers_truncated: false,
+    },
     ...overrides,
   };
 }

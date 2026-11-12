@@ -1,8 +1,11 @@
+import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/oxanium";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
 import App from "./App";
+import { EffectsProvider } from "./effects/EffectsProvider";
 import "./index.css";
 
 const container = document.getElementById("root");
@@ -10,8 +13,10 @@ if (!container) throw new Error("Root element #root was not found in index.html"
 
 createRoot(container).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <EffectsProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </EffectsProvider>
   </StrictMode>,
 );

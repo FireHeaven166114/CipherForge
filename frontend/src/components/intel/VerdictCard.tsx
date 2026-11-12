@@ -1,23 +1,36 @@
 import { isScoreAssessed } from "../../features/intel/classification";
 import { INDICATOR_STATUS_LABELS, INDICATOR_TYPE_LABELS } from "../../features/intel/labels";
 import type { Indicator, Score } from "../../types/intel";
+import BarMeter from "../BarMeter";
 import Card from "../Card";
 import ChipList from "../ChipList";
 import DateTime from "../DateTime";
 import FactList from "../FactList";
-import ClassificationBadge from "./ClassificationBadge";
+import GaugeRing from "../charts/GaugeRing";
+import AnimatedNumber from "../hud/AnimatedNumber";
+import { LABEL } from "../styles";
 
 interface VerdictCardProps {
   indicator: Indicator;
   score: Score;
 }
 
-function Figure({ label, value }: { label: string; value: number }) {
+function Confidence({ value }: { value: number }) {
   return (
-    <p className="text-slate-300">
-      {label} <span className="text-xl font-semibold tabular-nums text-slate-50">{value}</span>
-      <span className="text-slate-400"> / 100</span>
-    </p>
+    <div className="max-w-sm">
+      <p className={LABEL}>Confidence</p>
+      <p className="mt-1 flex items-baseline gap-1.5">
+        <AnimatedNumber value={value} className="font-mono text-2xl font-semibold tabular-nums text-ink-50" />
+        <span className="text-ink-300">/ 100</span>
+      </p>
+      <div className="mt-1.5">
+        <BarMeter percent={value} fillClass="fill-cipher" />
+      </div>
+      <p className="mt-1.5 text-xs text-ink-300">
+        How much fresh evidence stands behind the score. It is not the probability that the
+        indicator is malicious.
+      </p>
+    </div>
   );
 }
 
@@ -34,34 +47,36 @@ export default function VerdictCard({ indicator, score }: VerdictCardProps) {
     ) : null;
 
   return (
-    <Card title="CipherForge assessment">
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-          <span className="rounded border border-slate-600 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-200">
-            {INDICATOR_TYPE_LABELS[indicator.indicator_type]}
-          </span>
-          <p className="min-w-0 break-all font-mono text-base text-slate-50">
-            {indicator.indicator_value}
-          </p>
-        </div>
+    <Card title="CipherForge assessment" code="ASM">
+      <div className="flex flex-col items-center gap-6 @lg:flex-row @lg:items-start">
+        <GaugeRing
+          score={assessed ? score.score : null}
+          band={assessed ? score.classification : null}
+          className="size-48"
+        />
+        <div className="w-full min-w-0 flex-1 space-y-4">
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+            <span className="rounded-[3px] border border-cipher/50 bg-cipher/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-cipher">
+              {INDICATOR_TYPE_LABELS[indicator.indicator_type]}
+            </span>
+            <p className="min-w-0 break-all font-mono text-lg text-ink-50">{indicator.indicator_value}</p>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <ClassificationBadge classification={score.classification} assessed={assessed} />
           {assessed ? (
-            <>
-              <Figure label="Score" value={score.score} />
-              <Figure label="Confidence" value={score.confidence} />
-            </>
-          ) : null}
+            <Confidence value={score.confidence} />
+          ) : (
+            <p className="rounded-[3px] border border-warn/50 bg-warn/10 p-3 text-ink-100">
+              <span aria-hidden="true" className="mr-2 text-warn">
+                ▲
+              </span>
+              No provider answered, so CipherForge has no evidence about this indicator. This is not a
+              clean result: it only means nothing was checked.
+            </p>
+          )}
         </div>
+      </div>
 
-        {assessed ? null : (
-          <p className="rounded-md border border-slate-700 bg-slate-950 p-3">
-            No provider answered, so CipherForge has no evidence about this indicator. This is not a
-            clean result: it only means nothing was checked.
-          </p>
-        )}
-
+      <div className="mt-5 space-y-4 border-t border-ink-700/70 pt-4">
         <FactList
           facts={[
             { label: "Status", value: `${status.label}. ${status.detail}` },

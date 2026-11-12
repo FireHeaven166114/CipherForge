@@ -44,6 +44,43 @@ describe("InvestigationView", () => {
     expect(within(internal).getByText(/no internal telemetry/)).toBeInTheDocument();
   });
 
+  it("draws the score as segments beside each factor without adding to what is read out", () => {
+    render(<InvestigationView investigation={makeInvestigation()} />);
+
+    const table = screen.getByRole("table", { name: "Points that make up the score" });
+    // One picture per factor and one for the score itself; none is exposed to assistive technology.
+    const pictures = table.querySelectorAll("svg");
+    expect(pictures).toHaveLength(5);
+    for (const picture of pictures) expect(picture).toHaveAttribute("aria-hidden", "true");
+    expect(within(table).getAllByRole("row")).toHaveLength(6);
+    expect(within(table).getAllByRole("rowheader")).toHaveLength(5);
+  });
+
+  it("shows a cap that trims the score as a factor of its own", () => {
+    const base = makeInvestigation();
+    const capped = makeInvestigation({
+      score: {
+        ...base.score,
+        score: 60,
+        classification: "medium",
+        factors: [
+          ...base.score.factors,
+          {
+            code: "single_source_cap",
+            label: "Single-source cap",
+            points: -20,
+            detail: "Fewer than two sources support this indicator, so the score cannot exceed 60.",
+          },
+        ],
+      },
+    });
+    render(<InvestigationView investigation={capped} />);
+
+    const table = screen.getByRole("table", { name: "Points that make up the score" });
+    expect(within(table).getByRole("row", { name: /Single-source cap/ })).toHaveTextContent("-20");
+    expect(within(table).getByRole("row", { name: /Score \(out of 100\)/ })).toHaveTextContent("60");
+  });
+
   it("says nothing was assessed, rather than showing a clean Informational result", () => {
     render(<InvestigationView investigation={makeNotAssessed()} />);
 

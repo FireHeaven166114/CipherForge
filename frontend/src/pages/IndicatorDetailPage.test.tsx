@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
@@ -76,7 +76,8 @@ describe("IndicatorDetailPage", () => {
       "href",
       "/indicators",
     );
-    expect(document.title).toBe("Indicator 203.0.113.9 · CipherForge");
+    // The title is set by an effect, which React may flush a moment after the record is drawn.
+    await waitFor(() => expect(document.title).toBe("Indicator 203.0.113.9 · CipherForge"));
   });
 
   it("re-checks with the providers and replaces the stored result with the newer one", async () => {
@@ -95,7 +96,11 @@ describe("IndicatorDetailPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Re-check with providers" }));
 
-    expect(screen.getByRole("button", { name: "Re-checking…" })).toBeDisabled();
+    const busy = screen.getByRole("button", { name: "Re-checking…" });
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    expect(busy).toHaveFocus();
+    await user.click(busy);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[1] ?? [];
     expect(String(url)).toBe("/api/v1/intel/investigate");
     expect(JSON.parse(String(init?.body))).toEqual({ indicator: "203.0.113.9", refresh: true });

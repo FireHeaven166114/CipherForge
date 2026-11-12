@@ -1,18 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useContext } from "react";
 
-import { type CheckResult, type OverallStatus, deriveOverall } from "../features/status/overallStatus";
-import { ApiError } from "../services/apiClient";
-import { fetchHealth, fetchReadiness } from "../services/healthService";
+import type { CheckResult, OverallStatus } from "../features/status/overallStatus";
 import type { HealthResponse, ReadinessResponse } from "../types/api";
-
-const DEFAULT_POLL_INTERVAL_MS = 30_000;
-
-interface Snapshot {
-  generation: number;
-  health: CheckResult<HealthResponse>;
-  readiness: CheckResult<ReadinessResponse>;
-  checkedAt: Date;
-}
 
 export interface ServiceStatus {
   health: CheckResult<HealthResponse>;
@@ -23,52 +12,14 @@ export interface ServiceStatus {
   refresh: () => void;
 }
 
-async function settle<T>(promise: Promise<T>): Promise<CheckResult<T>> {
-  try {
-    return { state: "ok", data: await promise };
-  } catch (error) {
-    if (error instanceof ApiError) return { state: "error", error };
-    throw error;
-  }
-}
+export const ServiceStatusContext = createContext<ServiceStatus | null>(null);
 
-/** Checks API liveness and readiness on mount, on demand, and on a timer. */
-export function useServiceStatus(pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS): ServiceStatus {
-  const [generation, setGeneration] = useState(0);
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-
-    Promise.all([settle(fetchHealth(signal)), settle(fetchReadiness(signal))])
-      .then(([health, readiness]) => {
-        if (!signal.aborted) setSnapshot({ generation, health, readiness, checkedAt: new Date() });
-      })
-      .catch((error: unknown) => {
-        // A superseded or unmounted check is cancelled on purpose; anything else is a bug.
-        if (!signal.aborted) throw error;
-      });
-
-    return () => controller.abort();
-  }, [generation]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setGeneration((value) => value + 1), pollIntervalMs);
-    return () => clearInterval(timer);
-  }, [pollIntervalMs]);
-
-  const refresh = useCallback(() => setGeneration((value) => value + 1), []);
-
-  const health: CheckResult<HealthResponse> = snapshot?.health ?? { state: "idle" };
-  const readiness: CheckResult<ReadinessResponse> = snapshot?.readiness ?? { state: "idle" };
-
-  return {
-    health,
-    readiness,
-    overall: deriveOverall(health, readiness),
-    checkedAt: snapshot?.checkedAt ?? null,
-    isRefreshing: snapshot === null || snapshot.generation !== generation,
-    refresh,
-  };
+/**
+ * The API's liveness and readiness. Every caller reads the same check, so the top bar and the
+ * status page cannot disagree and a refresh from either one is seen by both.
+ */
+export function useServiceStatus(): ServiceStatus {
+  const status = useContext(ServiceStatusContext);
+  if (status === null) throw new Error("useServiceStatus must be used inside a ServiceStatusProvider.");
+  return status;
 }

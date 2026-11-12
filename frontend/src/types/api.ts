@@ -11,6 +11,14 @@ export interface ReadinessResponse {
   checks: Record<string, "ok" | "unavailable">;
 }
 
+/** The signed-in caller, from `GET /api/v1/me`. Keep in sync with backend/app/schemas/identity.py. */
+export interface Me {
+  subject: string;
+  name: string | null;
+  roles: string[];
+  auth_mode: "dev" | "entra";
+}
+
 /** Every API error uses this envelope; see backend/app/core/errors.py. */
 export interface ApiErrorEnvelope {
   error: {

@@ -28,12 +28,15 @@ dist/
 coverage/
 *.tsbuildinfo
 .vite/
+playwright-report/
+test-results/
 
 # --- Local data ---
 *.db
 *.sqlite
 *.sqlite3
 pgdata/
+backend/.demo/
 
 # --- Editors / OS ---
 .idea/

@@ -77,6 +77,8 @@ class Collector(ABC):
     name: ClassVar[str]
     display_name: ClassVar[str]
     supported_types: ClassVar[frozenset[IndicatorType]]
+    # Only the dev-only demo adapters (backend/devtools) set this; the UI then says so loudly.
+    simulated: ClassVar[bool] = False
 
     def __init__(
         self, *, api_key: str | None, client: httpx2.Client, cache_ttl_seconds: int

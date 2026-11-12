@@ -28,12 +28,23 @@ interface Settled {
   outcome: Extract<InvestigateState, { status: "success" | "error" }>;
 }
 
-/** Runs investigations one at a time; starting a new one cancels the one in flight. */
-export function useInvestigate(): InvestigateControls {
-  const [request, setRequest] = useState<Request | null>(null);
+/** A lookup to start as soon as the hook mounts, such as one chosen from the command palette. */
+export interface InitialRequest {
+  indicator: string;
+  refresh: boolean;
+}
+
+/**
+ * Runs investigations one at a time; starting a new one cancels the one in flight. Pass
+ * `initial` to begin a lookup on mount. It is read once: later changes to it are ignored.
+ */
+export function useInvestigate(initial?: InitialRequest): InvestigateControls {
+  const [request, setRequest] = useState<Request | null>(() =>
+    initial === undefined ? null : { id: 1, indicator: initial.indicator, refresh: initial.refresh },
+  );
   const [settled, setSettled] = useState<Settled | null>(null);
   // Ids never repeat, even after reset(), so an old result can never be mistaken for a new one.
-  const lastId = useRef(0);
+  const lastId = useRef(initial === undefined ? 0 : 1);
 
   useEffect(() => {
     if (request === null) return;

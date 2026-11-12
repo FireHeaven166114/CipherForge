@@ -1,196 +1,352 @@
-import type { ReactNode } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 
-import Card from "../components/Card";
-import DistributionChart, { type DistributionRow } from "../components/DistributionChart";
+import ActivityHeatmap from "../components/charts/ActivityHeatmap";
+import AreaChart from "../components/charts/AreaChart";
+import Donut from "../components/charts/Donut";
+import DotMap from "../components/charts/DotMap";
+import HBarList from "../components/charts/HBarList";
+import MatrixHeatmap from "../components/charts/MatrixHeatmap";
+import Radar from "../components/charts/Radar";
 import ErrorNotice from "../components/ErrorNotice";
-import IndicatorTable from "../components/intel/IndicatorTable";
+import { RefreshIcon } from "../components/hud/Icons";
+import PageHeader from "../components/hud/PageHeader";
+import Panel from "../components/hud/Panel";
+import StatusLed from "../components/hud/StatusLed";
 import LoadingNote from "../components/LoadingNote";
-import StatusBadge from "../components/StatusBadge";
-import { LINK, PRIMARY_BUTTON } from "../components/styles";
-import { CLASSIFICATIONS_BY_SEVERITY, CLASSIFICATION_META } from "../features/intel/classification";
-import { INDICATOR_TYPE_LABELS } from "../features/intel/labels";
-import { useApiResource } from "../hooks/useApiResource";
+import { facetItems, mapMarkers, riskSlices, threatSeries, typeAxes } from "../components/overview/chartData";
+import FocusDrawer, { type Focus, type FocusKind } from "../components/overview/FocusDrawer";
+import IndicatorList from "../components/overview/IndicatorList";
+import KpiTile from "../components/overview/KpiTile";
+import ModulesPanel from "../components/overview/ModulesPanel";
+import ProvidersPanel from "../components/overview/ProvidersPanel";
+import { BUTTON, LINK, PRIMARY_BUTTON } from "../components/styles";
+import { formatClock } from "../features/intel/format";
+import { indicatorsHref } from "../features/intel/filters";
+import { countryLabel } from "../features/overview/countries";
+import { longDay, shortDay } from "../features/overview/dates";
+import { describeTrend } from "../features/overview/trend";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { getStats, listIndicators } from "../services/intelService";
-import { INDICATOR_TYPES, type Stats } from "../types/intel";
+import { useLiveResource } from "../hooks/useLiveResource";
+import { getOverview } from "../services/intelService";
+import type { FacetEntry, Overview } from "../types/intel";
 
-const RECENT_COUNT = 5;
+// Module-level so its identity is stable between renders.
+const loadOverview = (signal: AbortSignal) => getOverview(signal);
 
-// Module-level so their identity is stable between renders.
-const loadStats = (signal: AbortSignal) => getStats(signal);
-const loadRecent = (signal: AbortSignal) =>
-  listIndicators({ sort: "recent", limit: RECENT_COUNT }, signal);
+const CAPTION = "mb-3 text-xs text-ink-300";
 
-function classificationRows(stats: Stats): DistributionRow[] {
-  return CLASSIFICATIONS_BY_SEVERITY.map((classification) => {
-    const meta = CLASSIFICATION_META[classification];
-    return {
-      id: classification,
-      label: meta.label,
-      marker: meta.symbol,
-      count: stats.by_classification[classification] ?? 0,
-      fillClass: meta.bar,
-    };
-  });
-}
-
-function typeRows(stats: Stats): DistributionRow[] {
-  return INDICATOR_TYPES.map((type) => ({
-    id: type,
-    label: INDICATOR_TYPE_LABELS[type],
-    count: stats.by_type[type] ?? 0,
-    fillClass: "fill-cyan-500",
-  }));
-}
-
-function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
+function SkeletonTiles() {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900 p-5">
-      <dt className="text-sm text-slate-400">{label}</dt>
-      <dd className="mt-1">
-        <span className="block text-3xl font-semibold tabular-nums text-slate-50">{value}</span>
-        {hint ? <span className="mt-1 block text-xs text-slate-400">{hint}</span> : null}
-      </dd>
+    <div aria-hidden="true" className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @deck:grid-cols-5">
+      {[0, 1, 2, 3, 4].map((tile) => (
+        <div key={tile} className="hud-panel h-32 animate-pulse rounded-[3px]" />
+      ))}
     </div>
   );
 }
 
-function StatsView({ stats }: { stats: Stats }) {
-  const configured = stats.providers.filter((provider) => provider.configured);
-  const unconfigured = stats.providers.filter((provider) => !provider.configured);
+function ScopeNote({ overview }: { overview: Overview }) {
+  const { scope } = overview;
+  return (
+    <div className="space-y-1 text-xs text-ink-300">
+      <p>
+        Counts and risk bands cover every stored indicator. Trends cover the last {scope.series_days} days and
+        hourly activity the last {scope.activity_days}, all in UTC.
+      </p>
+      {scope.lookups_truncated ? (
+        <p role="note" className="text-warn">
+          <span aria-hidden="true">▲ </span>
+          Trends use only the {scope.lookups_scanned.toLocaleString("en-US")} most recent lookups, so the oldest
+          days may be undercounted.
+        </p>
+      ) : null}
+      {scope.answers_truncated ? (
+        <p role="note" className="text-warn">
+          <span aria-hidden="true">▲ </span>
+          Countries, malware families, techniques and tags use only the{" "}
+          {scope.answers_scanned.toLocaleString("en-US")} most recent provider answers.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+interface DeckProps {
+  overview: Overview;
+  focus: Focus | null;
+  onFocus: (focus: Focus) => void;
+}
+
+function Deck({ overview, focus, onFocus }: DeckProps) {
+  const { kpis, series } = overview;
+  const { categories, series: lines } = threatSeries(overview);
+  const selectedCountry = focus?.kind === "country" ? focus.entry.key : null;
+
+  const open = (kind: FocusKind, entries: readonly FacetEntry[]) => (key: string) => {
+    const entry = entries.find((candidate) => candidate.key === key);
+    if (entry !== undefined) onFocus({ kind, entry });
+  };
 
   return (
-    <div className="space-y-6">
-      {configured.length === 0 ? (
-        <div role="note" className="rounded-lg border border-amber-700 bg-amber-950 p-4 text-sm text-amber-100">
-          <p className="flex items-center gap-2 font-semibold">
-            <span aria-hidden="true">▲</span>
-            No threat-intelligence provider is configured
-          </p>
-          <p className="mt-1">
-            Every investigation will come back as &ldquo;Not assessed&rdquo; until an administrator
-            adds a provider API key on the server.
-          </p>
-        </div>
-      ) : null}
+    <div className="space-y-4">
+      <section aria-label="Key figures">
+        <ul role="list" className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @deck:grid-cols-5">
+          <KpiTile
+            code="KPI-01"
+            label="Indicators tracked"
+            value={kpis.total_indicators}
+            note={`${kpis.new_indicators_24h} new in the last 24 hours`}
+            trend={describeTrend(kpis.new_indicators_24h, kpis.new_indicators_prev_24h)}
+            spark={series.map((point) => point.new_indicators)}
+            to={indicatorsHref()}
+          />
+          <KpiTile
+            code="KPI-02"
+            label="Lookups, last 24 hours"
+            value={kpis.lookups_24h}
+            trend={describeTrend(kpis.lookups_24h, kpis.lookups_prev_24h)}
+            spark={series.map((point) => point.lookups)}
+            to={indicatorsHref()}
+          />
+          <KpiTile
+            code="KPI-03"
+            label="High-risk indicators"
+            value={kpis.high_risk_indicators}
+            tone="high"
+            note="High and critical together"
+            to={indicatorsHref({ classification: "high_risk", sort: "risk" })}
+          />
+          <KpiTile
+            code="KPI-04"
+            label="Critical indicators"
+            value={kpis.critical_indicators}
+            tone="crit"
+            pulsing={kpis.critical_indicators > 0}
+            note="Score above 80"
+            to={indicatorsHref({ classification: "critical", sort: "risk" })}
+          />
+          <KpiTile
+            code="KPI-05"
+            label="Not assessed"
+            value={kpis.not_assessed_indicators}
+            tone="muted"
+            note="No provider answered. That is not the same as clean."
+            to={indicatorsHref({ classification: "not_assessed" })}
+          />
+        </ul>
+      </section>
 
-      <dl className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Indicators stored" value={stats.total_indicators} />
-        <Stat label="Lookups in the last 24 hours" value={stats.lookups_last_24h} />
-        <Stat
-          label="Providers configured"
-          value={`${configured.length} of ${stats.providers.length}`}
-          hint={
-            unconfigured.length > 0
-              ? `Not configured: ${unconfigured.map((provider) => provider.display_name).join(", ")}`
-              : undefined
-          }
-        />
-      </dl>
-
-      {stats.total_indicators === 0 ? (
-        <Card title="Indicators">
+      {kpis.total_indicators === 0 ? (
+        <Panel title="Nothing here yet" code="NIL">
           <p>No indicators have been investigated yet.</p>
           <Link to="/investigate" className={`${LINK} mt-2 inline-block`}>
             Investigate the first one
           </Link>
-        </Card>
+        </Panel>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card title="Indicators by classification">
-            <DistributionChart rows={classificationRows(stats)} total={stats.total_indicators} />
-            <p className="mt-3 text-xs text-slate-400">
-              Informational includes indicators that no provider has assessed yet, because those
-              score 0.
+        <div className="grid grid-cols-1 gap-4 @deck:grid-cols-12">
+          <Panel title="Threat pulse" code="TRD" className="@deck:col-span-8">
+            <p className={CAPTION}>Lookups per UTC day, and how many of them ended High or Critical.</p>
+            <AreaChart
+              categories={categories}
+              axisLabel={shortDay}
+              titleOf={longDay}
+              series={lines}
+              label="Lookups and high-risk lookups per day"
+              categoryName="Day"
+              emptyText="No lookups yet."
+            />
+          </Panel>
+
+          <Panel title="Risk posture" code="RSK" className="@deck:col-span-4">
+            <Donut
+              slices={riskSlices(overview)}
+              noun="indicator"
+              label="Indicators by risk band"
+              centerCaption="indicators"
+              emptyText="No indicators have been investigated yet."
+            />
+            <p className="mt-3 text-xs text-ink-300">
+              Not assessed means no provider answered. It is not the same as clean.
             </p>
-          </Card>
-          <Card title="Indicators by type">
-            <DistributionChart rows={typeRows(stats)} total={stats.total_indicators} />
-          </Card>
+          </Panel>
+
+          <Panel title="Provider-reported countries" code="GEO" className="@deck:col-span-8">
+            <p className={CAPTION}>
+              The country the providers report for an IP address. It is not where an attacker is, and domains,
+              URLs and hashes have none.
+            </p>
+            <DotMap
+              markers={mapMarkers(overview.countries)}
+              selected={selectedCountry}
+              onSelect={open("country", overview.countries)}
+              noun="indicator"
+              label="Provider-reported countries"
+            />
+          </Panel>
+
+          <Panel title="Top countries" code="GEO" className="@deck:col-span-4">
+            <HBarList
+              items={facetItems(overview.countries, countryLabel)}
+              label="Top provider-reported countries"
+              noun="indicator"
+              emptyText="No provider has reported a country yet."
+              limit={8}
+              onSelect={open("country", overview.countries)}
+            />
+          </Panel>
+
+          <Panel title="Malware families" code="MAL" className="@deck:col-span-4">
+            <HBarList
+              items={facetItems(overview.malware_families)}
+              label="Malware families"
+              noun="indicator"
+              emptyText="No malware family has been reported yet."
+              onSelect={open("malware", overview.malware_families)}
+            />
+          </Panel>
+
+          <Panel title="ATT&CK techniques" code="TTP" className="@deck:col-span-4">
+            <HBarList
+              items={facetItems(overview.attack_techniques)}
+              label="ATT&CK techniques"
+              noun="indicator"
+              emptyText="No ATT&CK technique has been reported yet."
+              onSelect={open("technique", overview.attack_techniques)}
+            />
+          </Panel>
+
+          <Panel title="Provider tags" code="TAG" className="@deck:col-span-4">
+            <HBarList
+              items={facetItems(overview.tags)}
+              label="Provider tags"
+              noun="indicator"
+              emptyText="No provider tag has been reported yet."
+              onSelect={open("tag", overview.tags)}
+            />
+          </Panel>
+
+          <Panel title="Indicator types by risk" code="MTX" className="@deck:col-span-7">
+            <p className={CAPTION}>How many indicators of each type sit in each risk band.</p>
+            <MatrixHeatmap rows={overview.matrix} />
+          </Panel>
+
+          <Panel title="Indicator mix" code="MIX" className="@deck:col-span-5">
+            <Radar axes={typeAxes(overview)} noun="indicator" label="Indicators by type" />
+          </Panel>
+
+          <Panel title="Lookup activity" code="ACT" className="@deck:col-span-8">
+            <p className={CAPTION}>Lookups per hour of the day (UTC) over the last {overview.activity.length} days.</p>
+            <ActivityHeatmap rows={overview.activity} />
+          </Panel>
+
+          <div className="@deck:col-span-4">
+            <ProvidersPanel providers={overview.providers} />
+          </div>
+
+          <Panel
+            title="Highest risk"
+            code="TOP"
+            className="@deck:col-span-6"
+            actions={
+              <Link to={indicatorsHref({ sort: "risk" })} className={`${LINK} text-xs`}>
+                View all by risk
+              </Link>
+            }
+          >
+            <IndicatorList
+              indicators={overview.top_risk}
+              label="Highest-risk indicators"
+              emptyText="No indicator has a risk score above zero yet."
+            />
+          </Panel>
+
+          <Panel
+            title="Latest investigations"
+            code="NEW"
+            className="@deck:col-span-6"
+            actions={
+              <Link to={indicatorsHref()} className={`${LINK} text-xs`}>
+                View all indicators
+              </Link>
+            }
+          >
+            <IndicatorList
+              indicators={overview.recent}
+              label="Latest investigations"
+              emptyText="Nothing has been investigated yet."
+            />
+          </Panel>
         </div>
       )}
 
-      <Card title="Threat-intelligence providers">
-        <ul role="list" className="divide-y divide-slate-800">
-          {stats.providers.map((provider) => (
-            <li
-              key={provider.name}
-              className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
-            >
-              <div>
-                <p className="font-medium text-slate-100">{provider.display_name}</p>
-                <p className="text-xs text-slate-400">
-                  Handles {provider.supported_types.map((type) => INDICATOR_TYPE_LABELS[type]).join(", ")}
-                </p>
-              </div>
-              <StatusBadge tone={provider.configured ? "ok" : "warn"}>
-                {provider.configured ? "Configured" : "Not configured"}
-              </StatusBadge>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 text-xs text-slate-400">
-          Configured providers receive the indicators you investigate.
-        </p>
-      </Card>
+      {kpis.total_indicators === 0 ? <ProvidersPanel providers={overview.providers} /> : null}
+      <ModulesPanel />
+      <ScopeNote overview={overview} />
     </div>
   );
 }
 
 export default function OverviewPage() {
   useDocumentTitle("Overview");
-  const stats = useApiResource(loadStats);
-  const recent = useApiResource(loadRecent);
+  const { state, refresh } = useLiveResource(loadOverview);
+  const [focus, setFocus] = useState<Focus | null>(null);
+
+  const ready = state.status === "ready" ? state : null;
+  const refreshedAt = ready === null ? null : formatClock(new Date(ready.updatedAt));
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            The indicators your team has investigated, and what CipherForge knows about them.
-          </p>
-        </div>
-        <Link to="/investigate" className={PRIMARY_BUTTON}>
-          Investigate an indicator
-        </Link>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        code="MOD-01 · COMMAND DECK"
+        title="Overview"
+        description="The indicators your team has investigated, and what the threat-intelligence providers said about them."
+        actions={
+          <>
+            {ready !== null ? (
+              <>
+                <span
+                  className="flex items-center gap-2 font-mono text-xs text-ink-200"
+                  title="The figures update every minute"
+                >
+                  <StatusLed tone={ready.refreshError === null ? "cipher" : "warn"} pulsing={ready.refreshError === null} />
+                  {ready.refreshError === null ? "Live" : "Stale"} · refreshed {refreshedAt}
+                </span>
+                <button
+                  type="button"
+                  onClick={ready.refreshing ? undefined : refresh}
+                  aria-disabled={ready.refreshing || undefined}
+                  className={BUTTON}
+                >
+                  <RefreshIcon className="size-4" />
+                  {ready.refreshing ? "Refreshing…" : "Refresh"}
+                </button>
+              </>
+            ) : null}
+            <Link to="/investigate" className={PRIMARY_BUTTON}>
+              Investigate an indicator
+            </Link>
+          </>
+        }
+      />
 
-      {stats.state.status === "loading" ? <LoadingNote>Loading statistics…</LoadingNote> : null}
-      {stats.state.status === "error" ? (
-        <ErrorNotice error={stats.state.error} onRetry={stats.reload} />
+      {state.status === "loading" ? (
+        <>
+          <LoadingNote>Loading the overview…</LoadingNote>
+          <SkeletonTiles />
+        </>
       ) : null}
-      {stats.state.status === "success" ? <StatsView stats={stats.state.data} /> : null}
+      {state.status === "error" ? <ErrorNotice error={state.error} onRetry={refresh} /> : null}
+      {ready !== null && ready.refreshError !== null ? (
+        <div role="alert" className="rounded-[3px] border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
+          <span aria-hidden="true">▲ </span>
+          The overview could not be refreshed. The figures below are from {refreshedAt}.
+        </div>
+      ) : null}
+      {ready !== null ? <Deck overview={ready.data} focus={focus} onFocus={setFocus} /> : null}
 
-      <section aria-labelledby="recent-heading">
-        <div className="flex flex-wrap items-baseline justify-between gap-4">
-          <h2 id="recent-heading" className="text-lg font-semibold tracking-tight">
-            Recently investigated
-          </h2>
-          <Link to="/indicators" className={LINK}>
-            View all indicators
-          </Link>
-        </div>
-        <div className="mt-3">
-          {recent.state.status === "loading" ? (
-            <LoadingNote>Loading recent indicators…</LoadingNote>
-          ) : null}
-          {recent.state.status === "error" ? (
-            <ErrorNotice error={recent.state.error} onRetry={recent.reload} />
-          ) : null}
-          {recent.state.status === "success" ? (
-            recent.state.data.items.length === 0 ? (
-              <p className="text-sm text-slate-300">Nothing has been investigated yet.</p>
-            ) : (
-              <IndicatorTable
-                indicators={recent.state.data.items}
-                caption="The most recently investigated indicators"
-              />
-            )
-          ) : null}
-        </div>
-      </section>
+      <FocusDrawer focus={focus} onClose={() => setFocus(null)} />
     </div>
   );
 }

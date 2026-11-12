@@ -6,39 +6,61 @@ export interface ClassificationMeta {
   symbol: string;
   /** Tailwind classes are written out in full so the build can find them. */
   badge: string;
+  /** SVG fill, for bars and cells. */
   bar: string;
+  /** SVG stroke, for rings and lines. */
+  stroke: string;
+  /** Text colour, for numbers and labels. */
+  text: string;
+  /** A solid swatch, for legends. */
+  swatch: string;
 }
 
 export const CLASSIFICATION_META: Record<Classification, ClassificationMeta> = {
   critical: {
     label: "Critical",
     symbol: "◆",
-    badge: "border-red-600 bg-red-950 text-red-200",
-    bar: "fill-red-500",
+    badge: "border-crit/70 bg-crit/15 text-crit",
+    bar: "fill-crit",
+    stroke: "stroke-crit",
+    text: "text-crit",
+    swatch: "bg-crit",
   },
   high: {
     label: "High",
     symbol: "▲",
-    badge: "border-orange-600 bg-orange-950 text-orange-200",
-    bar: "fill-orange-500",
+    badge: "border-high/70 bg-high/15 text-high",
+    bar: "fill-high",
+    stroke: "stroke-high",
+    text: "text-high",
+    swatch: "bg-high",
   },
   medium: {
     label: "Medium",
     symbol: "■",
-    badge: "border-amber-600 bg-amber-950 text-amber-200",
-    bar: "fill-amber-500",
+    badge: "border-med/70 bg-med/15 text-med",
+    bar: "fill-med",
+    stroke: "stroke-med",
+    text: "text-med",
+    swatch: "bg-med",
   },
   low: {
     label: "Low",
     symbol: "●",
-    badge: "border-sky-700 bg-sky-950 text-sky-200",
-    bar: "fill-sky-500",
+    badge: "border-low/70 bg-low/15 text-low",
+    bar: "fill-low",
+    stroke: "stroke-low",
+    text: "text-low",
+    swatch: "bg-low",
   },
   informational: {
     label: "Informational",
     symbol: "○",
-    badge: "border-slate-600 bg-slate-800 text-slate-200",
-    bar: "fill-slate-400",
+    badge: "border-info/60 bg-info/10 text-info",
+    bar: "fill-info",
+    stroke: "stroke-info",
+    text: "text-info",
+    swatch: "bg-info",
   },
 };
 
@@ -50,6 +72,18 @@ export const CLASSIFICATIONS_BY_SEVERITY: readonly Classification[] = [
   "low",
   "informational",
 ];
+
+/**
+ * The band a risk score (0 to 100) falls in. These are the API's own bands (intel-risk-v1), used
+ * to colour a bar by the highest score behind it when only the number is at hand.
+ */
+export function classificationForScore(score: number): Classification {
+  if (score <= 20) return "informational";
+  if (score <= 40) return "low";
+  if (score <= 60) return "medium";
+  if (score <= 80) return "high";
+  return "critical";
+}
 
 /**
  * A score of 0 only means "clean" when at least one provider answered. With no answers,

@@ -5,10 +5,10 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist", "coverage"]),
+  globalIgnores(["dist", "coverage", "playwright-report", "test-results"]),
   {
     files: ["**/*.{ts,tsx}"],
-    extends: [js.configs.recommended, tseslint.configs.recommended, reactHooks.configs.flat.recommended],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
       ecmaVersion: 2023,
       globals: globals.browser,
@@ -34,7 +34,13 @@ export default defineConfig([
     },
   },
   {
-    files: ["vite.config.ts"],
+    // Only the app is React. Playwright fixtures call a function named `use`, which the hooks
+    // rules would mistake for React's.
+    files: ["src/**/*.{ts,tsx}"],
+    extends: [reactHooks.configs.flat.recommended],
+  },
+  {
+    files: ["vite.config.ts", "playwright.config.ts", "e2e/**/*.ts"],
     languageOptions: { globals: globals.node },
   },
 ]);

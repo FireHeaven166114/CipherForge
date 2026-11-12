@@ -1,6 +1,6 @@
-import type { IndicatorPage, IndicatorQuery, Investigation, Stats } from "../types/intel";
+import type { IndicatorPage, IndicatorQuery, Investigation, Overview, Stats } from "../types/intel";
 import { request } from "./apiClient";
-import { isIndicatorPage, isInvestigation, isStats } from "./intelGuards";
+import { isIndicatorPage, isInvestigation, isOverview, isStats } from "./intelGuards";
 
 const BASE = "/api/v1/intel";
 
@@ -41,7 +41,8 @@ export function listIndicators(
 ): Promise<IndicatorPage> {
   const params = new URLSearchParams();
   if (query.type) params.set("type", query.type);
-  if (query.classification) params.set("classification", query.classification);
+  for (const band of query.classification ?? []) params.append("classification", band);
+  if (query.assessed !== undefined) params.set("assessed", String(query.assessed));
   if (query.q) params.set("q", query.q);
   if (query.sort) params.set("sort", query.sort);
   if (query.limit !== undefined) params.set("limit", String(query.limit));
@@ -55,4 +56,9 @@ export function listIndicators(
 
 export function getStats(signal?: AbortSignal): Promise<Stats> {
   return request(`${BASE}/stats`, { signal, guard: isStats });
+}
+
+/** Everything the Overview page shows, aggregated by the server in one read-only call. */
+export function getOverview(signal?: AbortSignal): Promise<Overview> {
+  return request(`${BASE}/overview`, { signal, guard: isOverview });
 }

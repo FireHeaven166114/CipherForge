@@ -18,6 +18,7 @@ The project is built in vertical slices, each one tested and committed before th
 | 1 | Foundation: FastAPI, React + TypeScript, PostgreSQL, Docker Compose, configuration, logging, auth shape | **Done.** The Docker stack itself is unverified, see [verification status](docs/deployment.md#verification-status) |
 | 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against recorded responses only, see [threat-intelligence.md](docs/threat-intelligence.md#verification-status) |
 | 3 | SOC dashboard: investigation view, IOC table and search, charts | **Done** (React dashboard for the Phase 2 API). Works against `AUTH_MODE=dev` only: there is no browser sign-in yet |
+| 3b | Command deck: a redesigned futuristic UI, the `/overview` aggregates, a demo mode with simulated providers, and an end-to-end browser test suite | **Done.** Tested against simulated providers only, see [Testing the dashboard](#testing-the-dashboard) |
 | 4-12 | Network sensor, detection, correlation, mini-SIEM, cases, Vault, integrations, Azure, DevSecOps | Not started |
 
 The roadmap follows the project specification; see [docs/architecture.md](docs/architecture.md) for
@@ -46,8 +47,9 @@ how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code.
   and AlienVault OTX where they apply, and returns **each provider's answer on its own**, then an
   explainable CipherForge score from 0 to 100 with its confidence, the evidence it rests on, what is
   not known and recommended next steps. One source alone can never push the score above 60.
-- `GET /api/v1/intel/indicators` (search, filter, page), `GET /api/v1/intel/indicators/{id}` and
-  `GET /api/v1/intel/stats` read the stored results without contacting a provider.
+- `GET /api/v1/intel/indicators` (search, filter, page), `GET /api/v1/intel/indicators/{id}`,
+  `GET /api/v1/intel/stats` and `GET /api/v1/intel/overview` (the aggregates behind the dashboard)
+  read the stored results without contacting a provider.
 - Answers are cached in PostgreSQL (6 hours for AbuseIPDB, 12 for OTX by default). A provider that
   is missing, slow or failing shows up as a labelled status; it never breaks the lookup.
 - Every investigation, including refused input, is written to an append-only audit table.
@@ -59,23 +61,50 @@ endpoints in [docs/api.md](docs/api.md).
 
 **Phase 3: investigation dashboard**
 
-A React single-page app over the Phase 2 API, with five screens:
+A React single-page app over the Phase 2 API, with five screens (Phase 3b gave them the look and
+the overview described below):
 
-- **Overview**: how many indicators are stored, lookups in the last 24 hours, which providers are
-  configured, and the indicators by classification and by type (accessible bar charts with text
-  values, not colour alone), plus the five most recently checked indicators.
+- **Overview**: the command deck described under Phase 3b.
 - **Investigate**: enter an indicator and see the result at once. Each provider is shown on its own
   card (status, freshness, its own evidence), followed by the CipherForge score with the factors
   behind it, what is not known and the recommended next steps. Internal telemetry is shown as "not
   connected" rather than left out.
-- **Indicators**: search, filter by type and classification, sort by recent check or by risk, and
-  page through the stored results. The filters live in the address, so a view can be bookmarked.
+- **Indicators**: search, filter by type and risk (a band, High and Critical together, or Not
+  assessed), sort by recent check or by risk, and page through the stored results. The filters live
+  in the address, so a view can be bookmarked.
 - **Indicator details**: the stored record, with a button to re-check it with the providers.
 - **System status**: API and database health, as before.
 
 An indicator that no provider answered about is shown as **"Not assessed"**, never as low risk or
-clean. Text that comes from a provider is rendered as plain text, links to outside sites are built
-only from identifiers that match a strict pattern, and nothing is stored in the browser.
+clean. Text that comes from a provider is rendered as plain text, and links to outside sites are built
+only from identifiers that match a strict pattern.
+
+**Phase 3b: the command deck**
+
+The dashboard was redesigned as a dark, dense "command deck" in the spirit of a threat-intelligence
+workbench, and given one aggregate endpoint to draw from:
+
+- **Overview** is one screen of live figures from `GET /api/v1/intel/overview`: five headline tiles
+  (each opens the matching filtered list; indicators and lookups also show their change on the
+  previous 24 hours), a 14-day trend of lookups and high-risk lookups, the risk bands, a map and
+  ranked lists of provider-reported countries, malware families, ATT&CK techniques and provider
+  tags (select one to see the indicators behind it), indicators by type and risk, an hourly activity
+  grid, the providers, the highest-risk and latest indicators, and the platform modules, with the
+  ones not built yet marked **Planned**. It refreshes itself every minute.
+- **Keyboard first.** `/` or `Ctrl K` opens a command palette (go to a page, investigate or search
+  for what you typed); `G` then `O`, `I`, `L` or `S` jumps to a page.
+- **Effects you can switch off.** An animated backdrop, numbers that count up and charts that draw
+  themselves. The switch is in the header, and they stay off when the system asks for reduced motion.
+  Nothing depends on them: every figure also exists as text.
+- **Honest by construction.** Large counts are shortened with the exact value kept in tooltips and for
+  screen readers, "Not assessed" is its own group, the map says it shows the country a provider
+  reports and not where an attacker is, and a banner appears whenever the providers are simulated.
+- **Responsive.** Each part lays itself out by the width it is given and by the text size, so it
+  works from a phone to a wide screen and at larger text.
+- **Self-contained and private.** Fonts and map data are bundled, so the page makes no third-party
+  requests, sets no cookies and stores nothing in the browser except the effects switch.
+- **Tested end to end** in a real browser, from the form to the record, the list and the totals; see
+  [Testing the dashboard](#testing-the-dashboard).
 
 ### Not implemented yet
 
@@ -155,12 +184,41 @@ not "clean"; the dashboard says so in words. To query the real services, put fre
 Private, loopback and documentation-range addresses (for example `192.168.1.1` or `203.0.113.9`)
 are refused before any outside call, so use a public address to see a result.
 
+### Try it without API keys
+
+A dashboard with nothing in it shows little. `backend/devtools/` holds a **development-only** demo
+server: the real application, but with **simulated providers** and a throwaway SQLite database
+seeded with about two weeks of synthetic lookups. Nothing in it comes from AbuseIPDB or OTX, and the
+dashboard says so in a banner whenever a provider is simulated.
+
+```bash
+cd backend
+python -m uvicorn devtools.demo_server:create_demo_app --factory --port 8000
+# in a second terminal
+cd frontend
+npm run dev                       # http://127.0.0.1:5173
+```
+
+- Everything is invented. Domains and URLs sit under the names IANA reserves for documentation
+  (`example.com`, `.org`, `.net`), the malicious-looking addresses are IPv6 addresses from space
+  nobody has been allocated, and the only IPv4 addresses are well-known public resolvers, simulated
+  as clean. Tests enforce that the catalogue cannot accuse a real host.
+- Development sign-in is on, so no token is needed (`CIPHERFORGE_DEMO_ROLES` changes the roles).
+- The database is `backend/.demo/demo.db` (git-ignored). The server refuses any other location, so it
+  cannot be pointed at a real database. It is rebuilt at start when its newest lookup is more than a
+  day old; `CIPHERFORGE_DEMO_RESET=1` rebuilds it at once and `CIPHERFORGE_DEMO_DB` selects another
+  `.db` file inside that folder.
+- The code is kept out of the Docker image (`backend/.dockerignore`) and the application never
+  imports it. The `CIPHERFORGE_DEMO_*` and `E2E_*` variables are development settings that the
+  application does not read.
+
 ## Quality checks
 
 ```bash
 # Backend (from backend/)
 ruff check . && ruff format --check .
 bandit -c pyproject.toml -r app -q
+bandit -c pyproject.toml -r devtools -q --skip B311   # dev-only demo code; seeded randomness is intended
 pip-audit -r requirements.txt
 pytest --cov=app                  # SQLite only
 TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/test_db pytest
@@ -169,9 +227,67 @@ TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/test_db pyte
 # Frontend (from frontend/)
 npm run typecheck && npm run lint && npm test && npm run build
 npm audit --audit-level=moderate
+npm run test:e2e                  # real-browser tests, see "Testing the dashboard"
 ```
 
 Point `TEST_DATABASE_URL` at a throwaway database: the PostgreSQL tests create and drop tables in it.
+
+## Testing the dashboard
+
+Unit tests (`npm test`, Vitest) cover components and helpers. What a person would actually see is
+checked by an end-to-end suite in `frontend/e2e/`, written with [Playwright](https://playwright.dev/).
+It drives a real browser against the **production build** of the dashboard, served with the
+security headers from `frontend/nginx.conf`, which talks to the **real API** on a freshly seeded
+copy of the [demo database](#try-it-without-api-keys). Expected figures are taken from the API's own
+answers, not from what the page displays.
+
+```bash
+cd backend && pip install -r requirements-dev.txt     # once: the demo API runs from this environment
+cd ../frontend && npm ci                              # once
+npm run test:e2e                                      # builds the app, starts both servers, runs everything
+npx playwright test e2e/overview.spec.ts -g "the map" # one spec or one group while working
+npx playwright show-report                            # HTML report; failures keep a trace and a screenshot
+```
+
+- The runner starts its own servers on ports **8100** (API) and **4180** (web), so the development
+  servers (8000, 5173) can stay up. It serves what `npm run build` last produced: build again after
+  changing `src/` (`npm run test:e2e` does).
+- Locally the tests use Microsoft Edge, which Windows already has. Set `E2E_CHANNEL` (for example
+  `chrome`) to use another installed browser, or `CI=1` to use the Chromium that
+  `npx playwright install --with-deps chromium` downloads, as the CI job does. `E2E_PYTHON` names
+  the Python that runs the API (default: `backend/.venv`, then `python` on the PATH).
+- The specs share one seeded database and run one after another. A complete run took about 18 minutes
+  on a laptop, so run the spec you are working on, and the whole suite before you commit.
+
+| Spec | What it proves |
+| --- | --- |
+| `shell` | Pages and navigation, the top bar, the `G` shortcuts, the command palette, the effects switch |
+| `overview` | Every figure on the overview equals what the API returned; ranked lists, the details drawer, the map, refreshing, an API that does not answer |
+| `indicators` | Search, every filter, sorting, paging, the address bar as the state, the record page |
+| `investigate` | Form validation, a lookup from the form to the evidence, refused and failed lookups, the palette hand-off |
+| `status` | A healthy API, a degraded one, an unreachable one, and recovery |
+| `journey` | One story across screens: investigate a new value, open its record, find it in the list, see the totals move by exactly what happened |
+| `a11y` | axe-core on every screen in many states (loading, empty, failing, drawer and palette open), with motion reduced, on a phone and with the effects on, plus a text-contrast audit against the lightest glass |
+| `responsive` | 320 to 1440 px wide, desktop at 200% zoom, and text enlarged to 200%: nothing overflows, is clipped or overlaps |
+| `security` | The real response headers, and the browser itself blocking 20 kinds of injected content (inline and `javascript:` code, `data:` and `blob:` scripts, a `<base>` tag, scripts, styles, frames, forms, sockets and beacons to other sites) |
+| `untrusted-data` | Hostile names, values and links in provider data are shown as text and never run or followed |
+| `long-data` | Very long values and very large numbers stay inside their boxes |
+| `privacy` | No third-party request, no cookies, no `Referer`, nothing kept in the browser but the effects switch, and the indicator only in the body of the one POST |
+
+Every test also runs under a guard that fails it on a console error or warning, an uncaught
+exception, a failed request, an unexpected HTTP error status or a Content Security Policy violation.
+
+What a green run does **not** show:
+
+- It uses simulated providers, so no real AbuseIPDB or OTX evidence has been through the dashboard.
+- The security specs run against a small Node server that stands in for nginx and reads its header
+  values from the real `nginx.conf`: the file is checked, nginx is not. The container images were
+  not built either.
+- Automated checks find only part of the accessibility problems. No screen reader or other assistive
+  technology was used, and the contrast audit measures chart text against the flat glass colour, not
+  against what the animated backdrop shows through it.
+- It was run in Edge on Windows. Firefox and Safari were not tried, and the CI job that runs it on
+  Chromium has not run yet.
 
 ## Configuration
 
@@ -202,8 +318,9 @@ secrets: they are never logged, never returned by the API and, in Compose, given
 ## Repository layout
 
 ```text
-backend/      FastAPI service (app/, alembic/, tests/)
-frontend/     React + TypeScript + Vite + Tailwind single-page app, served by nginx in Docker
+backend/      FastAPI service (app/, alembic/, tests/) and devtools/, the dev-only demo server
+frontend/     React + TypeScript + Vite + Tailwind single-page app, served by nginx in Docker;
+              e2e/ holds its Playwright browser tests
 sensor/       Network sensor (placeholder, not implemented)
 infra/        Infrastructure as code (placeholder, not implemented)
 docs/         Architecture, security and deployment notes
@@ -222,8 +339,11 @@ dependencies, and automated dependency and static analysis in CI. The threat-int
 adds strict indicator validation (no server-side requests to internal targets), defensive parsing of
 untrusted provider data, provider keys kept server-side, a per-analyst rate limit and an
 append-only audit trail. The dashboard shows provider text as plain text, builds links to other
-sites only from fixed bases and strictly patterned identifiers, and its lint rules reject
+sites only from fixed bases and strictly patterned identifiers, makes no third-party requests, sets
+no cookies and keeps nothing in the browser but its effects switch, and its lint rules reject
 `dangerouslySetInnerHTML`, `innerHTML` assignment and `eval` (a pattern check, not a guarantee).
+Browser tests check those claims, including that the browser really blocks injected scripts, styles,
+frames and beacons under the Content Security Policy.
 The details, and what is deliberately left for later, are in [docs/security.md](docs/security.md)
 and [docs/threat-model.md](docs/threat-model.md).
 
@@ -245,13 +365,30 @@ and [docs/threat-model.md](docs/threat-model.md).
 - **Scores are advice, not verdicts.** They come from two community and commercial feeds, age with
   the evidence only when an indicator is investigated again, and say nothing about your own
   environment because no internal telemetry is connected yet.
-- **The dashboard has not shown real provider evidence.** It was exercised in a real browser against
-  the live API with no provider keys, so the only result seen live was "Not assessed"; the screens
-  for real evidence were checked with made-up example data and by tests. Its charts are plain
-  accessible bars, not a charting library, and there are no time-series charts yet (they need
-  telemetry that does not exist).
+- **The dashboard has not shown real provider evidence.** It has been used against the real API with
+  no provider keys (where the only result is "Not assessed") and against the demo server's simulated
+  providers; the screens for real evidence were checked with made-up data, by tests and in those
+  browser tests. Its charts are hand-built SVG with text equivalents, not a charting library. The only
+  time series is the lookup history in CipherForge's own audit log: nothing is charted from network
+  telemetry because none is connected. The map shows the country a provider reports for an
+  indicator, which is not where anyone is.
+- **The overview is computed on every request.** It reads the 2,000 most recent provider answers and
+  the 20,000 most recent audit rows of the last 14 days, and says when either bound cut it short.
+  That suits a lab; a busier installation would need pre-aggregation or caching (see
+  [docs/threat-intelligence.md](docs/threat-intelligence.md#limitations)).
+- **The browser tests have not run in CI.** They pass locally (Edge on Windows, simulated providers);
+  the workflow job that runs them on Chromium is untested, like the rest of the workflow.
 - The container images, Compose file and CI workflow are checked statically and by the CI
   pipeline; see [docs/deployment.md](docs/deployment.md#verification-status).
+
+## Map data
+
+The overview's dot-matrix world map is generated from [Natural Earth](https://www.naturalearthdata.com/)
+(public domain, release v5.1.2): a 2-degree land and sea grid from the 1:110m land outline and one
+label point per country from the 1:50m country data. The generated files are committed
+(`frontend/src/features/overview/worldMask.ts` and `countryCentroids.ts`), so building the app and
+loading the page never need the network. To change them, run
+`node scripts/build-world-data.mjs` from `frontend/`.
 
 ## Licence
 

@@ -1,9 +1,9 @@
 # Threat intelligence (Intel)
 
-> **Status: implemented (Phase 2, backend; Phase 3, analyst screens).** The API looks up one
+> **Status: implemented (Phase 2, backend; Phases 3 and 3b, analyst screens).** The API looks up one
 > indicator at a time, asks AbuseIPDB and AlienVault OTX about it, stores each answer, scores the
 > indicator with a documented method and audits the lookup. The dashboard shows the result; see
-> [The analyst screens](#the-analyst-screens-phase-3). The provider adapters have only been run
+> [The analyst screens](#the-analyst-screens). The provider adapters have only been run
 > against recorded sample responses, never against the live services; see
 > [Verification status](#verification-status).
 
@@ -220,18 +220,28 @@ what it does not: that no internal telemetry was available, which providers were
 which answers are stale, when a provider gave no activity date, when only one source supports the
 score, and that an absence of reports is not proof of safety.
 
-## The analyst screens (Phase 3)
+## The analyst screens
 
 The dashboard is a client of the API described above. It adds no scoring logic of its own: it shows
 what the API returns, and where the API is silent it says so. See
-[architecture.md](architecture.md#frontend) for how it is built.
+[architecture.md](architecture.md#frontend) for how it is built. Phase 3 built the screens; Phase 3b
+redesigned them as a dark, dense "command deck" and added the overview aggregates.
 
 | Screen | Route | What it does |
 | --- | --- | --- |
-| Overview | `/` | Totals from `GET /intel/stats` (indicators stored, lookups in the last 24 hours, providers configured), indicators by classification and by type, and the five most recently checked indicators. |
+| Overview | `/` | The command deck, drawn from one `GET /intel/overview`: five headline figures (indicators tracked, lookups, high-risk, critical, not assessed; the first two also show their change on the previous 24 hours); a 14-day lookup trend; indicators by risk band, by type and by type and band; an hourly activity grid; a map and ranked lists of the countries the providers report, malware families, ATT&CK techniques and provider tags, each of which opens a drawer with the indicators behind it; the providers; the highest-risk and latest indicators; and the platform modules, with the unbuilt ones marked Planned. It refreshes itself every minute while the tab is visible. |
 | Investigate | `/investigate` | One field and an option to ask the providers again. It warns that the indicator is sent to each configured provider, checks only that the field is not empty and not longer than 2048 characters, and leaves everything else, including the refusal of non-public targets, to the server, whose reason it shows. |
-| Indicators | `/indicators` | Search (at most 256 characters), filter by type and classification, sort by recent check or by risk, and page through the results. The filters are kept in the address, so a view can be bookmarked and Back works. |
+| Indicators | `/indicators` | Search (at most 256 characters), filter by type and by risk (one band, High and Critical together, or Not assessed), sort by recent check or by risk, and page through the results. The filters are kept in the address, so a view can be bookmarked and Back works. |
 | Indicator details | `/indicators/<id>` | The stored record, read without calling a provider, with a button that re-checks it. The id is checked as a UUID before any request is made. |
+| System status | `/status` | Whether the API is up and its database reachable, from `/health` and `/ready`. |
+
+Around them, the shell offers a command palette (`/` or `Ctrl K`: go to a page, investigate or search
+for what was typed, switch effects) and "go to" shortcuts (`G` then `O`, `I`, `L` or `S`). Plain keys
+never fire while typing in a field or while a dialog is open. The effects (animated backdrop,
+numbers that count up, charts that draw themselves) can be switched off from the header and stay off
+when the system asks for reduced motion. That switch is the only thing the console keeps in the
+browser, and a lookup can never be started by a link: the palette passes the value in the history
+state, not the address.
 
 Investigate and the detail page share one layout, in this order:
 
@@ -256,18 +266,26 @@ Choices that keep the evidence honest:
 - **"Not assessed" is not "clean".** When no provider answered (`answered_sources` is 0 on an
   investigation, confidence 0 on a list row), the badge reads "Not assessed" instead of
   "Informational", the score and confidence figures are left out, and the text says that nothing
-  was checked. The overview counts such an indicator under "Informational", because the API scores
-  it 0, and says so beneath the chart.
+  was checked. The overview keeps such indicators as a group of their own (its own tile, its own
+  slice, its own column in the types-by-risk grid, and the list filter "Not assessed"), and the
+  bands count only indicators a provider answered for.
 - **Nothing rests on colour.** Each classification has a symbol and a word, bars carry their
-  numbers, and a provider's status is a word, not just a colour.
-- **Geolocation is labelled for what it is**: "approximate; it does not show who is behind the
-  traffic". It is never called the attacker's location.
+  numbers, and a provider's status is a word, not just a colour. Every chart has a text equivalent
+  for screen readers.
+- **Geolocation is labelled for what it is.** The map and the country list show the country a
+  provider reports for an IP address, and say that it is not where an attacker is and that domains,
+  URLs and hashes have none. It is never called the attacker's location.
+- **Numbers are never cut off.** Large counts are shortened (1.2M, or 12k in a chart label) and
+  the exact value stays in the tooltip and in the text read by screen readers. Long names wrap or
+  are shortened with an ellipsis, with the full text kept in the page.
+- **All times are UTC**, and the overview says how much data its trends cover, and warns when a
+  bound was reached.
 - **Confidence and evidence strength are not probabilities**, and the cards say so.
 - **The explanation of `intel-risk-v1` is a copy** of the rules in `correlation/scoring.py`
   (`ScorePanel.tsx`). It is shown only when the API reports that methodology, so a different method
   is never described with the wrong rules. Change a constant in the scorer and you must change that
   text too, and bump the method's name if the rules change.
-- **Provider text is shown as text.** See [security.md](security.md#frontend-controls-phase-3).
+- **Provider text is shown as text.** See [security.md](security.md#frontend-controls-phases-3-and-3b).
 
 ## Stored data and audit
 
@@ -342,8 +360,12 @@ These are known and deliberate for the MVP:
   was available; correlation with your own logs arrives with the later phases.
 - **The dashboard has no sign-in.** It works against an API running with `AUTH_MODE=dev`; against
   Entra ID authentication every screen shows "Not signed in" until the MSAL sign-in is built.
+- **The overview is computed on every request** from stored rows, with bounds on what it reads (the
+  20,000 most recent lookups and 2,000 most recent provider answers). The `scope` part of the
+  response and a note on the page say when a bound was reached. There is no pre-aggregation or
+  cache, which is fine for a portfolio-sized database and would need revisiting for a large one.
 - **The score explanation in the UI is a copy** of the scorer's rules, kept in step by hand (see
-  [The analyst screens](#the-analyst-screens-phase-3)).
+  [The analyst screens](#the-analyst-screens)).
 - **The audit protection can be removed by a database superuser** who drops the triggers. It guards
   against application bugs and ordinary SQL, not against someone who owns the database.
 
@@ -360,13 +382,17 @@ These are known and deliberate for the MVP:
   have **not** been confirmed against the live service. If a field is missing or renamed, the adapter
   treats it as unknown and the investigation reports a weaker result; it does not fail.
 - Run one real lookup with your own keys before relying on the output.
-- **The dashboard was exercised in a real browser** (headless Microsoft Edge) with the production
-  build behind a stand-in for nginx's headers and Content Security Policy, against the real API on
-  PostgreSQL with `AUTH_MODE=dev` and **no provider keys**. That covers the investigate, saved
-  record, re-check, list, search, deep-link, status and error flows, and found no policy violations.
-  The only investigation it could produce was the "Not assessed" one. The screens for real
-  evidence (a High result, provider details, OTX pulses) were checked in the browser only with
-  made-up example data and are covered by component tests, not by a live provider answer.
+- **The dashboard is tested end to end in a real browser.** The Playwright suite in
+  `frontend/e2e/` drives the production build behind a Node stand-in for nginx's headers and
+  Content Security Policy, against a real API (`backend/devtools/demo_server.py`) on made-up data
+  with **simulated providers**. It covers every screen and flow, keyboard use, accessibility (axe and
+  a contrast audit), layouts from a phone to a wide screen and larger text, the security headers and
+  policy, hostile provider text, very long and very large values, privacy (no cookies, no third
+  parties) and one investigation followed through every screen; see
+  [Testing the dashboard](../README.md#testing-the-dashboard). Because the providers are simulated,
+  none of this shows how a real provider answers: the screens for real evidence (a High result,
+  provider details, OTX pulses) are exercised with invented answers, and the live services have never
+  been called.
 
 ## Adding a provider
 

@@ -2,11 +2,19 @@ import {
   CLASSIFICATIONS,
   INDICATOR_TYPES,
   PROVIDER_STATUSES,
+  type ActivityRow,
+  type DayPoint,
+  type FacetEntry,
   type Indicator,
   type IndicatorPage,
   type Investigation,
+  type MatrixRow,
+  type Overview,
+  type OverviewKpis,
+  type OverviewScope,
   type ProviderInfo,
   type ProviderView,
+  type SampleIndicator,
   type Score,
   type ScoreFactor,
   type Stats,
@@ -148,7 +156,8 @@ function isProviderInfo(value: unknown): value is ProviderInfo {
     isString(value.name) &&
     isString(value.display_name) &&
     typeof value.configured === "boolean" &&
-    isArrayOf(isIndicatorType)(value.supported_types)
+    isArrayOf(isIndicatorType)(value.supported_types) &&
+    typeof value.simulated === "boolean"
   );
 }
 
@@ -160,5 +169,101 @@ export function isStats(value: unknown): value is Stats {
     isCountRecord(value.by_type) &&
     isCount(value.lookups_last_24h) &&
     isArrayOf(isProviderInfo)(value.providers)
+  );
+}
+
+function isSampleIndicator(value: unknown): value is SampleIndicator {
+  return (
+    isRecord(value) &&
+    isString(value.indicator_id) &&
+    isIndicatorType(value.indicator_type) &&
+    isString(value.indicator_value) &&
+    isCount(value.risk_score) &&
+    isClassification(value.classification)
+  );
+}
+
+function isFacetEntry(value: unknown): value is FacetEntry {
+  return (
+    isRecord(value) &&
+    isString(value.key) &&
+    isCount(value.count) &&
+    isCount(value.max_risk) &&
+    isArrayOf(isSampleIndicator)(value.samples)
+  );
+}
+
+function isOverviewKpis(value: unknown): value is OverviewKpis {
+  return (
+    isRecord(value) &&
+    isCount(value.total_indicators) &&
+    isCount(value.new_indicators_24h) &&
+    isCount(value.new_indicators_prev_24h) &&
+    isCount(value.lookups_24h) &&
+    isCount(value.lookups_prev_24h) &&
+    isCount(value.high_risk_indicators) &&
+    isCount(value.critical_indicators) &&
+    isCount(value.not_assessed_indicators)
+  );
+}
+
+function isDay(value: unknown): value is string {
+  return isString(value) && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isDayPoint(value: unknown): value is DayPoint {
+  return (
+    isRecord(value) &&
+    isDay(value.day) &&
+    isCount(value.lookups) &&
+    isCount(value.high_risk_lookups) &&
+    isCount(value.new_indicators)
+  );
+}
+
+function isActivityRow(value: unknown): value is ActivityRow {
+  return (
+    isRecord(value) &&
+    isDay(value.day) &&
+    Array.isArray(value.hours) &&
+    value.hours.length === 24 &&
+    value.hours.every(isCount)
+  );
+}
+
+function isMatrixRow(value: unknown): value is MatrixRow {
+  return isRecord(value) && isIndicatorType(value.indicator_type) && isCountRecord(value.counts);
+}
+
+function isOverviewScope(value: unknown): value is OverviewScope {
+  return (
+    isRecord(value) &&
+    isCount(value.series_days) &&
+    isCount(value.activity_days) &&
+    isCount(value.lookups_scanned) &&
+    typeof value.lookups_truncated === "boolean" &&
+    isCount(value.answers_scanned) &&
+    typeof value.answers_truncated === "boolean"
+  );
+}
+
+export function isOverview(value: unknown): value is Overview {
+  return (
+    isRecord(value) &&
+    isString(value.generated_at) &&
+    isOverviewKpis(value.kpis) &&
+    isCountRecord(value.by_classification) &&
+    isCountRecord(value.by_type) &&
+    isArrayOf(isMatrixRow)(value.matrix) &&
+    isArrayOf(isDayPoint)(value.series) &&
+    isArrayOf(isActivityRow)(value.activity) &&
+    isArrayOf(isFacetEntry)(value.countries) &&
+    isArrayOf(isFacetEntry)(value.malware_families) &&
+    isArrayOf(isFacetEntry)(value.attack_techniques) &&
+    isArrayOf(isFacetEntry)(value.tags) &&
+    isArrayOf(isIndicator)(value.top_risk) &&
+    isArrayOf(isIndicator)(value.recent) &&
+    isArrayOf(isProviderInfo)(value.providers) &&
+    isOverviewScope(value.scope)
   );
 }

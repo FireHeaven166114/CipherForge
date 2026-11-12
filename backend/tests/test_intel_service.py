@@ -802,11 +802,54 @@ def test_filtering_by_classification_uses_the_documented_bands(
     for score in (0, 20, 21, 40, 41, 60, 61, 80, 81, 100):
         seed_indicator(session, f"host-{score}.example.com", score=score)
 
-    page = build_service().list_indicators(session, classification=classification)
+    page = build_service().list_indicators(session, classifications=[classification])
 
     assert {item.risk_score for item in page.items} == scores
     assert page.total == len(scores)
     assert {item.classification for item in page.items} == {classification}
+
+
+def test_several_classifications_match_any_of_them(
+    session: Session, build_service: ServiceFactory
+) -> None:
+    for score in (0, 30, 50, 70, 90):
+        seed_indicator(session, f"host-{score}.example.com", score=score)
+    service = build_service()
+
+    def scores(*bands: Classification) -> set[int]:
+        page = service.list_indicators(session, classifications=bands)
+        return {item.risk_score for item in page.items}
+
+    assert scores(Classification.HIGH, Classification.CRITICAL) == {70, 90}
+    assert scores(Classification.CRITICAL, Classification.CRITICAL) == {90}
+    assert scores() == {0, 30, 50, 70, 90}
+
+
+def test_filtering_by_whether_a_provider_answered(
+    session: Session, build_service: ServiceFactory
+) -> None:
+    seed_indicator(session, "silent.example.com", score=0, confidence=0)
+    seed_indicator(session, "quiet.example.com", score=0, confidence=40)
+    seed_indicator(session, "loud.example.com", score=70, confidence=90)
+    service = build_service()
+
+    def values(**filters: Any) -> set[str]:
+        return {item.indicator_value for item in service.list_indicators(session, **filters).items}
+
+    assert values(assessed=False) == {"silent.example.com"}
+    assert values(assessed=True) == {"quiet.example.com", "loud.example.com"}
+    assert values() == {"silent.example.com", "quiet.example.com", "loud.example.com"}
+    # "Informational" and "not assessed" are different sets that share a score of 0.
+    assert values(classifications=[Classification.INFORMATIONAL]) == {
+        "silent.example.com",
+        "quiet.example.com",
+    }
+    assert values(classifications=[Classification.INFORMATIONAL], assessed=True) == {
+        "quiet.example.com"
+    }
+    assert values(classifications=[Classification.INFORMATIONAL], assessed=False) == {
+        "silent.example.com"
+    }
 
 
 def test_filtering_by_type(session: Session, build_service: ServiceFactory) -> None:

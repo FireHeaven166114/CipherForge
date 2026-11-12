@@ -4,25 +4,8 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import App from "./App";
-import { INDICATOR_ID, makeIndicator, makeInvestigation, makePage, makeStats } from "./test/fixtures";
-import { jsonResponse, stubFetch } from "./test/http";
-
-function serveEverything() {
-  return stubFetch((url) => {
-    const { pathname } = new URL(url, "http://localhost");
-    if (pathname === "/api/v1/intel/stats") return jsonResponse(makeStats());
-    if (pathname === "/api/v1/intel/indicators") return jsonResponse(makePage([makeIndicator()]));
-    if (pathname.startsWith("/api/v1/intel/indicators/")) return jsonResponse(makeInvestigation());
-    if (pathname === "/health") {
-      return jsonResponse({ status: "ok", service: "cipherforge-api", version: "0.3.0" });
-    }
-    if (pathname === "/ready") return jsonResponse({ status: "ready", checks: { database: "ok" } });
-    return jsonResponse(
-      { error: { code: "not_found", message: "No such route.", correlation_id: "x" } },
-      { status: 404 },
-    );
-  });
-}
+import { INDICATOR_ID } from "./test/fixtures";
+import { serveEverything } from "./test/serveApp";
 
 function renderApp(url: string) {
   return render(
@@ -36,8 +19,9 @@ function navigation() {
   return within(screen.getByRole("navigation", { name: "Primary" }));
 }
 
-function currentPage(): string | undefined {
-  return navigation().queryByRole("link", { current: "page" })?.textContent ?? undefined;
+/** The link marked as the current page. Tests read its accessible name, which is what a screen reader says. */
+function currentPage(): HTMLElement | null {
+  return navigation().queryByRole("link", { current: "page" });
 }
 
 describe("App", () => {
@@ -46,7 +30,7 @@ describe("App", () => {
     renderApp("/");
 
     expect(await screen.findByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
-    expect(currentPage()).toBe("Overview");
+    expect(currentPage()).toHaveAccessibleName("Overview");
     expect(navigation().getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
       "/",
       "/investigate",
@@ -67,14 +51,14 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Investigate an indicator", level: 1 }),
     ).toBeInTheDocument();
-    expect(currentPage()).toBe("Investigate");
+    expect(currentPage()).toHaveAccessibleName("Investigate");
     expect(document.title).toBe("Investigate · CipherForge");
     expect(screen.getByRole("main")).toHaveFocus();
 
     await user.click(navigation().getByRole("link", { name: "Indicators" }));
 
     expect(await screen.findByRole("heading", { name: "Indicators", level: 1 })).toBeInTheDocument();
-    expect(currentPage()).toBe("Indicators");
+    expect(currentPage()).toHaveAccessibleName("Indicators");
     expect(screen.getByRole("main")).toHaveFocus();
   });
 
@@ -83,7 +67,7 @@ describe("App", () => {
     renderApp(`/indicators/${INDICATOR_ID}`);
 
     expect(await screen.findByRole("heading", { name: "Indicator details" })).toBeInTheDocument();
-    expect(currentPage()).toBe("Indicators");
+    expect(currentPage()).toHaveAccessibleName("Indicators");
   });
 
   it("serves the system status page", async () => {
@@ -92,7 +76,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "System status", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("Operational")).toBeInTheDocument();
-    expect(currentPage()).toBe("System status");
+    expect(currentPage()).toHaveAccessibleName("System status");
   });
 
   it("shows a not-found page for an unknown address and links back to the overview", async () => {
@@ -101,7 +85,7 @@ describe("App", () => {
     renderApp("/nowhere");
 
     expect(await screen.findByRole("heading", { name: "Page not found", level: 1 })).toBeInTheDocument();
-    expect(currentPage()).toBeUndefined();
+    expect(currentPage()).toBeNull();
     expect(document.title).toBe("Page not found · CipherForge");
 
     await user.click(screen.getByRole("link", { name: "Go to the overview" }));

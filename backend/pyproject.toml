@@ -1,6 +1,6 @@
 [project]
 name = "cipherforge-backend"
-version = "0.3.0"
+version = "0.4.0"
 description = "CipherForge API"
 requires-python = ">=3.12"
 # Dependencies live in requirements*.txt so container builds are reproducible.
@@ -16,7 +16,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["app", "tests"]
+src = ["app", "tests", "devtools"]
 extend-exclude = [".venv"]
 
 [tool.ruff.lint]
@@ -25,11 +25,13 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "C4", "RUF"]
 [tool.ruff.lint.isort]
 # backend/alembic/ (the migration environment) would otherwise look first-party.
 known-third-party = ["alembic"]
-known-first-party = ["app", "tests"]
+known-first-party = ["app", "tests", "devtools"]
 
 [tool.ruff.lint.per-file-ignores]
 # Asserts, throwaway credentials and fixed tokens are expected in tests.
 "tests/**" = ["S101", "S105", "S106", "S108"]
+# Seeded pseudo-randomness makes the demo data reproducible; it protects nothing.
+"devtools/**" = ["S311"]
 # Alembic migrations are generated code.
 "alembic/**" = ["E501"]
 

@@ -23,7 +23,7 @@ export default function BarMeter({ percent, fillClass }: BarMeterProps) {
       focusable="false"
       className="h-2 w-full rounded-sm"
     >
-      <rect width="100" height="8" className="fill-slate-800" />
+      <rect width="100" height="8" className="fill-ink-700/60" />
       <rect width={width} height="8" className={fillClass} />
     </svg>
   );

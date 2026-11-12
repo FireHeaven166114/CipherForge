@@ -12,6 +12,11 @@ const RELATIVE_UNITS: readonly { unit: Intl.RelativeTimeFormatUnit; ms: number }
 
 const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 const signedFormat = new Intl.NumberFormat("en", { signDisplay: "exceptZero" });
+const groupedFormat = new Intl.NumberFormat("en-US");
+const compactFormat = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
+// Below this, a number is short enough to print in full wherever a count is drawn.
+const COMPACT_FROM = 1_000_000;
 
 // A timestamp without a zone would be read as local time, so assume UTC like the API does.
 const NO_ZONE = /^\d{4}-\d{2}-\d{2}T[\d:.]+$/;
@@ -26,6 +31,11 @@ export function parseTimestamp(value: string | null | undefined): Date | null {
 /** "2026-05-01 12:00 UTC". Analysts correlate across systems, so time is always UTC. */
 export function formatUtc(date: Date): string {
   return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+/** "14:05:09 UTC", for a live view that says when its data last arrived. */
+export function formatClock(date: Date): string {
+  return `${date.toISOString().slice(11, 19)} UTC`;
 }
 
 /** "3 days ago" or "in 5 hours"; anything under a minute is "just now". */
@@ -46,6 +56,20 @@ export function formatPoints(points: number): string {
 /** Two decimals for a 0..1 strength; "Not available" when the provider gave none. */
 export function formatStrength(signal: number | null): string {
   return signal === null ? "Not available" : signal.toFixed(2);
+}
+
+/** "12,480": a count in full, with its thousands grouped. */
+export function formatCount(count: number): string {
+  return groupedFormat.format(Math.round(count));
+}
+
+/**
+ * Like formatCount, but a number from `from` up (a million by default) is shortened: "2.4M", "987.7B".
+ * It is for the places that cannot grow with their number: a big tile, the hole of a ring, a label
+ * in a chart.
+ */
+export function formatCompactCount(count: number, from = COMPACT_FROM): string {
+  return Math.abs(count) < from ? formatCount(count) : compactFormat.format(count);
 }
 
 /** "1 provider", "2 providers". Regular nouns only. */

@@ -56,7 +56,7 @@ problem. Submitted values are never echoed back, and server errors never expose 
 Liveness. Does not touch any dependency, so it stays green while the database is down.
 
 ```json
-{ "status": "ok", "service": "cipherforge-api", "version": "0.3.0" }
+{ "status": "ok", "service": "cipherforge-api", "version": "0.4.0" }
 ```
 
 ### `GET /ready`
@@ -88,9 +88,9 @@ claim.
 
 All routes are under `/api/v1/intel` and need the `SecurityAnalyst` or `Admin` role: a request without
 a valid token gets `401`, and one with another role gets `403`. How results are produced is explained in
-[threat-intelligence.md](threat-intelligence.md). The dashboard uses `POST /investigate`,
-`GET /indicators`, `GET /indicators/{id}` and `GET /stats`, and its status page uses `/health` and
-`/ready`.
+[threat-intelligence.md](threat-intelligence.md). The dashboard uses `POST /investigate`, `GET /overview`,
+`GET /indicators`, `GET /indicators/{id}` and `GET /stats` (to warn when the providers are simulated),
+and its status page uses `/health` and `/ready`.
 
 ### `POST /api/v1/intel/investigate`
 
@@ -220,7 +220,8 @@ Search stored indicators. Query parameters, all optional:
 | Parameter | Default | Notes |
 | --- | --- | --- |
 | `type` | any | `ipv4`, `ipv6`, `domain`, `url` or `sha256`. |
-| `classification` | any | `informational`, `low`, `medium`, `high` or `critical`. |
+| `classification` | any | `informational`, `low`, `medium`, `high` or `critical`. Repeat it to match several, for example `?classification=high&classification=critical`. |
+| `assessed` | any | `true` keeps indicators that at least one provider answered for. `false` keeps those no provider answered for, whose score of `0` says nothing about them (not assessed, not clean). |
 | `q` | none | Case-insensitive substring of the indicator value, up to 256 characters. |
 | `sort` | `recent` | `recent` (most recently investigated first) or `risk` (highest score first). |
 | `limit` | `25` | 1 to 100. |
@@ -228,6 +229,11 @@ Search stored indicators. Query parameters, all optional:
 
 Response: `{ "items": [ ...indicators... ], "total": 12, "limit": 25, "offset": 0 }`, where each item has
 the `indicator` fields shown above.
+
+`classification` matches score bands only. An indicator no provider answered for scores 0, so it
+falls in `informational` even though nothing was checked. Combine the two filters to tell them
+apart: the dashboard sends `assessed=true` with a band (High and critical together are
+`classification=high&classification=critical&assessed=true`), and `assessed=false` alone for "Not assessed".
 
 ### `GET /api/v1/intel/stats`
 
@@ -240,14 +246,45 @@ Counts for an overview screen:
   "by_type": { "ipv4": 5, "ipv6": 0, "domain": 4, "url": 1, "sha256": 2 },
   "lookups_last_24h": 7,
   "providers": [
-    { "name": "abuseipdb", "display_name": "AbuseIPDB", "configured": true, "supported_types": ["ipv4", "ipv6"] },
-    { "name": "otx", "display_name": "AlienVault OTX", "configured": false, "supported_types": ["ipv4", "ipv6", "domain", "url", "sha256"] }
+    { "name": "abuseipdb", "display_name": "AbuseIPDB", "configured": true, "supported_types": ["ipv4", "ipv6"], "simulated": false },
+    { "name": "otx", "display_name": "AlienVault OTX", "configured": false, "supported_types": ["ipv4", "ipv6", "domain", "url", "sha256"], "simulated": false }
   ]
 }
 ```
 
 `lookups_last_24h` counts audited lookups that succeeded or partly succeeded. `configured` says only
-whether a key is set; keys are never returned.
+whether a key is set; keys are never returned. `simulated` is `true` only for the development demo
+server (see [Try it without keys](../README.md#try-it-without-api-keys)), whose providers return invented
+answers; the dashboard then shows a banner so no one mistakes them for real intelligence.
+
+### `GET /api/v1/intel/overview`
+
+Everything the overview dashboard draws, in one read-only request. It is computed from stored
+indicators, the latest answer each provider gave for each indicator and the lookup audit trail. It
+never calls a provider and is not audited.
+
+| Field | Meaning |
+| --- | --- |
+| `generated_at` | When the figures were computed. |
+| `kpis` | `total_indicators`; `new_indicators_24h` and `new_indicators_prev_24h` (the 24 hours before that); `lookups_24h` and `lookups_prev_24h`; `high_risk_indicators` (high plus critical, among assessed indicators); `critical_indicators`; `not_assessed_indicators`. |
+| `by_classification` | Indicators per band, plus `not_assessed` for those no provider answered for. |
+| `by_type` | Indicators per type. |
+| `matrix` | One row per type with `counts` per band and `not_assessed` (types by risk). |
+| `series` | The last 14 UTC days, oldest first, today last and zero days included: `day`, `lookups`, `high_risk_lookups`, `new_indicators`. |
+| `activity` | The last 7 UTC days, each with `hours`: 24 lookup counts, one per UTC hour. |
+| `countries` | Up to 40 entries. This is the country a provider reports for an IP address's registration. It is **not** where an attacker is. |
+| `malware_families`, `attack_techniques`, `tags` | Up to 10 entries each, most frequent first. |
+| `top_risk`, `recent` | Up to 8 indicators: highest score first, and most recently updated first. |
+| `providers` | As in `/stats`. |
+| `scope` | How much was read: `series_days`, `activity_days`, `lookups_scanned`, `lookups_truncated`, `answers_scanned`, `answers_truncated`. |
+
+Every entry in `countries`, `malware_families`, `attack_techniques` and `tags` has `key`, `count` (distinct
+indicators whose latest provider answer carries the value), `max_risk` and up to 5 `samples` of the
+highest-risk indicators, each with `indicator_id`, `indicator_type`, `indicator_value`, `risk_score`
+and `classification`. A lookup is a completed investigation, including a re-check; an input that was
+rejected is not one. The attribute breakdowns read at most the 2,000 most recent successful provider answers and
+the lookup figures at most 20,000 audit rows from the 14-day window. When a limit is reached the matching
+`scope` flag is `true`, and the dashboard says so instead of implying the figures are complete.
 
 ## Roles
 

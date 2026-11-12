@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import { jsonResponse, stubFetch } from "../test/http";
-import { INDICATOR_ID, makeInvestigation, makePage, makeStats } from "../test/fixtures";
-import { getIndicator, getStats, investigateIndicator, listIndicators } from "./intelService";
+import {
+  INDICATOR_ID,
+  makeInvestigation,
+  makeOverview,
+  makePage,
+  makeStats,
+} from "../test/fixtures";
+import {
+  getIndicator,
+  getOverview,
+  getStats,
+  investigateIndicator,
+  listIndicators,
+} from "./intelService";
 
 describe("investigateIndicator", () => {
   it("posts the indicator and the refresh flag as JSON and returns the investigation", async () => {
@@ -75,7 +87,7 @@ describe("listIndicators", () => {
 
     await listIndicators({
       type: "domain",
-      classification: "high",
+      classification: ["high"],
       q: "a&b=c d",
       sort: "risk",
       limit: 25,
@@ -92,6 +104,20 @@ describe("listIndicators", () => {
       limit: "25",
       offset: "50",
     });
+  });
+
+  it("repeats the classification for several bands and says whether a provider answered", async () => {
+    const fetchMock = stubFetch(() => jsonResponse(makePage([])));
+
+    await listIndicators({ classification: ["high", "critical"], assessed: true });
+    await listIndicators({ assessed: false });
+
+    const first = new URL(String(fetchMock.mock.calls[0]?.[0]), "http://localhost");
+    expect(first.searchParams.getAll("classification")).toEqual(["high", "critical"]);
+    expect(first.searchParams.get("assessed")).toBe("true");
+    const second = new URL(String(fetchMock.mock.calls[1]?.[0]), "http://localhost");
+    expect(second.searchParams.has("classification")).toBe(false);
+    expect(second.searchParams.get("assessed")).toBe("false");
   });
 
   it("keeps an offset of zero and leaves out an empty search", async () => {
@@ -115,5 +141,25 @@ describe("getStats", () => {
     stubFetch(() => jsonResponse({ ...makeStats(), total_indicators: "many" }));
 
     await expect(getStats()).rejects.toMatchObject({ code: "invalid_response" });
+  });
+});
+
+describe("getOverview", () => {
+  it("reads the aggregated dashboard payload", async () => {
+    const overview = makeOverview();
+    const fetchMock = stubFetch(() => jsonResponse(overview));
+
+    await expect(getOverview()).resolves.toEqual(overview);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/intel/overview",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("rejects a payload with a missing section", async () => {
+    // JSON drops undefined, so the response has no "series" at all.
+    stubFetch(() => jsonResponse({ ...makeOverview(), series: undefined }));
+
+    await expect(getOverview()).rejects.toMatchObject({ code: "invalid_response" });
   });
 });

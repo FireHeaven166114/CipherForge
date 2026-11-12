@@ -105,6 +105,8 @@ export interface ProviderInfo {
   /** Whether the server has an API key for this provider. The key itself is never returned. */
   configured: boolean;
   supported_types: IndicatorType[];
+  /** True only for the development demo server, whose providers return made-up answers. */
+  simulated: boolean;
 }
 
 export interface Stats {
@@ -115,9 +117,93 @@ export interface Stats {
   providers: ProviderInfo[];
 }
 
+/** The five risk bands plus "not assessed" (no provider answered, so there is no verdict). */
+export const RISK_BANDS = [...CLASSIFICATIONS, "not_assessed"] as const;
+export type RiskBand = (typeof RISK_BANDS)[number];
+
+/** A short reference to an indicator, used to list examples behind a count. */
+export interface SampleIndicator {
+  indicator_id: string;
+  indicator_type: IndicatorType;
+  indicator_value: string;
+  risk_score: number;
+  classification: Classification;
+}
+
+/** One value of a grouped field (a country, a malware family, ...) with how often it occurs. */
+export interface FacetEntry {
+  key: string;
+  count: number;
+  max_risk: number;
+  /** The highest-risk indicators carrying this value. */
+  samples: SampleIndicator[];
+}
+
+export interface OverviewKpis {
+  total_indicators: number;
+  new_indicators_24h: number;
+  new_indicators_prev_24h: number;
+  lookups_24h: number;
+  lookups_prev_24h: number;
+  /** High plus critical indicators. */
+  high_risk_indicators: number;
+  critical_indicators: number;
+  not_assessed_indicators: number;
+}
+
+export interface DayPoint {
+  /** A UTC calendar day, `YYYY-MM-DD`. */
+  day: string;
+  lookups: number;
+  high_risk_lookups: number;
+  new_indicators: number;
+}
+
+export interface ActivityRow {
+  day: string;
+  /** Lookup counts for the 24 UTC hours of the day. */
+  hours: number[];
+}
+
+export interface MatrixRow {
+  indicator_type: IndicatorType;
+  counts: Record<string, number>;
+}
+
+/** How much data the aggregates were built from, so truncation is never silent. */
+export interface OverviewScope {
+  series_days: number;
+  activity_days: number;
+  lookups_scanned: number;
+  lookups_truncated: boolean;
+  answers_scanned: number;
+  answers_truncated: boolean;
+}
+
+export interface Overview {
+  generated_at: string;
+  kpis: OverviewKpis;
+  by_classification: Record<string, number>;
+  by_type: Record<string, number>;
+  matrix: MatrixRow[];
+  series: DayPoint[];
+  activity: ActivityRow[];
+  countries: FacetEntry[];
+  malware_families: FacetEntry[];
+  attack_techniques: FacetEntry[];
+  tags: FacetEntry[];
+  top_risk: Indicator[];
+  recent: Indicator[];
+  providers: ProviderInfo[];
+  scope: OverviewScope;
+}
+
 export interface IndicatorQuery {
   type?: IndicatorType;
-  classification?: Classification;
+  /** Score bands. Several match any of them. */
+  classification?: readonly Classification[];
+  /** true: a provider answered for it. false: none did, so its score says nothing. */
+  assessed?: boolean;
   q?: string;
   sort?: IndicatorSort;
   limit?: number;

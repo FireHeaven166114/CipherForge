@@ -13,7 +13,7 @@ import logging
 import math
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 import httpx2
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -46,6 +46,7 @@ from app.schemas.intel import (
     IndicatorPage,
     InternalEvidenceOut,
     InvestigationResponse,
+    OverviewResponse,
     ProviderInfo,
     ProviderView,
     ProviderViewStatus,
@@ -64,6 +65,7 @@ from app.services.normalization import (
     NormalizedIndicator,
     normalize_indicator,
 )
+from app.services.overview import build_overview
 
 logger = logging.getLogger("cipherforge.intel")
 
@@ -176,6 +178,7 @@ class IntelService:
                 result=RESULT_REJECTED,
                 source_ip=context.source_ip,
                 details={"reason": str(exc)},
+                timestamp=now,
             )
             session.commit()
             raise
@@ -218,6 +221,7 @@ class IntelService:
                 "score": score.score,
                 "classification": score.classification.value,
             },
+            timestamp=now,
         )
         session.commit()
 
@@ -386,18 +390,35 @@ class IntelService:
         session: Session,
         *,
         indicator_type: IndicatorType | None = None,
-        classification: Classification | None = None,
+        classifications: Collection[Classification] = (),
+        assessed: bool | None = None,
         query: str | None = None,
         sort: SortOrder = "recent",
         limit: int = 25,
         offset: int = 0,
     ) -> IndicatorPage:
+        """Stored indicators, newest or riskiest first.
+
+        ``classifications`` are score bands (any of them matches; none means any band).
+        ``assessed`` separates indicators a provider answered for from those none did: confidence
+        is built from provider answers, so 0 means not assessed, and its score says nothing.
+        """
         conditions: list[ColumnElement[bool]] = []
         if indicator_type is not None:
             conditions.append(ThreatIndicator.indicator_type == indicator_type.value)
-        if classification is not None:
-            low, high = score_range(classification)
-            conditions.append(ThreatIndicator.risk_score.between(low, high))
+        if classifications:
+            conditions.append(
+                or_(
+                    *(
+                        ThreatIndicator.risk_score.between(*score_range(band))
+                        for band in dict.fromkeys(classifications)
+                    )
+                )
+            )
+        if assessed is not None:
+            conditions.append(
+                ThreatIndicator.confidence > 0 if assessed else ThreatIndicator.confidence == 0
+            )
         if query:
             # autoescape: "%" and "_" in the search text match themselves, not any character.
             conditions.append(ThreatIndicator.indicator_value.icontains(query, autoescape=True))
@@ -461,9 +482,16 @@ class IntelService:
                 display_name=collector.display_name,
                 configured=collector.configured,
                 supported_types=sorted(collector.supported_types),
+                simulated=collector.simulated,
             )
             for collector in self._collectors
         ]
+
+    def overview(self, session: Session) -> OverviewResponse:
+        """Dashboard aggregates over stored data. Read-only: never calls a provider."""
+        return build_overview(
+            session, now=self._clock(), providers=self.providers(), indicator_out=_indicator_out
+        )
 
 
 # --- Persistence helpers --------------------------------------------------------------

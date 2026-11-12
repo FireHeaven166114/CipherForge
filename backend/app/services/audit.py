@@ -5,6 +5,7 @@ an action and its audit record succeed or fail as one. If the audit insert fails
 fails: it is better to refuse an action than to perform it without a record.
 """
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -37,11 +38,13 @@ def record_audit(
     source_ip: str | None = None,
     correlation_id: str | None = None,
     details: dict[str, Any] | None = None,
+    timestamp: datetime | None = None,
 ) -> AuditLog:
     """Add one audit row to ``session`` (the caller commits).
 
     ``actor`` is the authenticated principal's stable subject. Never put passwords, tokens,
-    API keys or raw user input in ``details``.
+    API keys or raw user input in ``details``. ``timestamp`` defaults to the current UTC time;
+    services pass their own clock so one investigation has one notion of "now".
     """
     correlation = correlation_id if correlation_id is not None else correlation_id_var.get()
     entry = AuditLog(
@@ -53,5 +56,7 @@ def record_audit(
         correlation_id=correlation[:_CORRELATION_ID_MAX] if correlation is not None else None,
         details=details,
     )
+    if timestamp is not None:
+        entry.timestamp = timestamp
     session.add(entry)
     return entry

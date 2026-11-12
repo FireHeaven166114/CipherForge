@@ -13,7 +13,7 @@ export default function FactList({ facts }: { facts: readonly Fact[] }) {
         .filter(({ value }) => value !== null && value !== undefined && value !== false)
         .map(({ label, value }) => (
           <Fragment key={label}>
-            <dt className="text-slate-400">{label}</dt>
+            <dt className="text-ink-300">{label}</dt>
             <dd className="break-words">{value}</dd>
           </Fragment>
         ))}

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -27,6 +27,10 @@ function serve(reply: (offset: number) => Response): FetchMock {
 function query(fetchMock: FetchMock, call = fetchMock.mock.calls.length - 1) {
   const url = new URL(String(fetchMock.mock.calls[call]?.[0]), "http://localhost");
   return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
+}
+
+function lastUrl(fetchMock: FetchMock): URL {
+  return new URL(String(fetchMock.mock.calls[fetchMock.mock.calls.length - 1]?.[0]), "http://localhost");
 }
 
 function location(): string {
@@ -74,6 +78,7 @@ describe("IndicatorsPage", () => {
     expect(query(fetchMock).params).toEqual({
       type: "ipv4",
       classification: "high",
+      assessed: "true",
       q: "203.0",
       sort: "risk",
       limit: "25",
@@ -85,6 +90,48 @@ describe("IndicatorsPage", () => {
     expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("203.0");
     expect(screen.getByRole("table")).toHaveAccessibleName("Indicators, sorted by highest risk");
     expect(screen.getByRole("button", { name: "Reset filters" })).toBeInTheDocument();
+  });
+
+  it("offers the groups the overview counts, in the order of severity", async () => {
+    serve(() => jsonResponse(makePage([makeIndicator()])));
+    renderPage();
+    await screen.findByRole("table", { name: TABLE });
+
+    const options = within(screen.getByLabelText("Classification")).getAllByRole("option");
+
+    expect(options.map((option) => option.textContent)).toEqual([
+      "All classifications",
+      "High or critical",
+      "Critical",
+      "High",
+      "Medium",
+      "Low",
+      "Informational",
+      "Not assessed",
+    ]);
+  });
+
+  it("filters by high and critical together, and by the indicators no provider answered for", async () => {
+    const fetchMock = serve(() => jsonResponse(makePage([makeIndicator()])));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("table", { name: TABLE });
+
+    await user.selectOptions(screen.getByLabelText("Classification"), "High or critical");
+
+    await waitFor(() => {
+      expect(lastUrl(fetchMock).searchParams.getAll("classification")).toEqual(["high", "critical"]);
+    });
+    expect(lastUrl(fetchMock).searchParams.get("assessed")).toBe("true");
+    expect(location()).toBe("/indicators?classification=high_risk");
+
+    await user.selectOptions(screen.getByLabelText("Classification"), "Not assessed");
+
+    await waitFor(() => {
+      expect(lastUrl(fetchMock).searchParams.get("assessed")).toBe("false");
+    });
+    expect(lastUrl(fetchMock).searchParams.has("classification")).toBe(false);
+    expect(location()).toBe("/indicators?classification=not_assessed");
   });
 
   it("never sends values from the address that the API does not define", async () => {

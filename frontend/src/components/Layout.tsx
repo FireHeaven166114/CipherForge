@@ -1,23 +1,33 @@
-import { useEffect, useRef } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Outlet, useLocation } from "react-router";
 
-const NAV_ITEMS = [
-  { to: "/", label: "Overview", end: true },
-  { to: "/investigate", label: "Investigate", end: false },
-  { to: "/indicators", label: "Indicators", end: false },
-  { to: "/status", label: "System status", end: false },
-] as const;
+import Backdrop from "./shell/Backdrop";
+import CommandPalette from "./shell/CommandPalette";
+import NavRail from "./shell/NavRail";
+import SimulationBanner from "./shell/SimulationBanner";
+import TopBar from "./shell/TopBar";
+import { useShortcuts } from "./shell/useShortcuts";
+import { ServiceStatusProvider } from "./status/ServiceStatusProvider";
 
-const NAV_LINK =
-  "inline-block border-b-2 px-3 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400";
-// The current page is marked by a bar and a background, not by colour alone.
-const NAV_LINK_ACTIVE = "border-cyan-400 bg-slate-800 text-white";
-const NAV_LINK_IDLE = "border-transparent text-slate-300 hover:bg-slate-900 hover:text-white";
-
+/** The frame around every page. The API check lives here so the top bar and the pages share it. */
 export default function Layout() {
+  return (
+    <ServiceStatusProvider>
+      <Shell />
+    </ServiceStatusProvider>
+  );
+}
+
+function Shell() {
   const { pathname } = useLocation();
   const main = useRef<HTMLElement>(null);
   const previousPath = useRef(pathname);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const togglePalette = useCallback(() => setPaletteOpen((open) => !open), []);
+  useShortcuts({ onTogglePalette: togglePalette, onOpenPalette: openPalette });
 
   // A client-side navigation does not reload the page, so nothing tells a keyboard or
   // screen-reader user that the content changed. Moving focus to the content does.
@@ -28,7 +38,8 @@ export default function Layout() {
   }, [pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="relative flex min-h-screen flex-col text-ink-100">
+      <Backdrop />
       <a
         href="#main-content"
         onClick={(event) => {
@@ -36,44 +47,24 @@ export default function Layout() {
           event.preventDefault();
           main.current?.focus();
         }}
-        className="sr-only rounded-md bg-cyan-700 px-3 py-2 text-sm font-semibold text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+        className="sr-only rounded-[3px] bg-cipher px-3 py-2 text-sm font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50"
       >
         Skip to main content
       </a>
-      <header className="border-b border-slate-800">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 pt-4">
-          <div className="flex items-center gap-3 pb-2">
-            <img src="/favicon.svg" alt="" className="h-8 w-8" />
-            <span className="text-lg font-semibold tracking-tight">CipherForge</span>
-            <span className="text-sm text-slate-400">Security operations console</span>
-          </div>
-          <nav aria-label="Primary">
-            <ul className="flex flex-wrap gap-1">
-              {NAV_ITEMS.map((item) => (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    end={item.end}
-                    className={({ isActive }) =>
-                      `${NAV_LINK} ${isActive ? NAV_LINK_ACTIVE : NAV_LINK_IDLE}`
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </div>
-      </header>
-      <main
-        id="main-content"
-        ref={main}
-        tabIndex={-1}
-        className="mx-auto max-w-6xl px-6 py-8 focus:outline-none"
-      >
-        <Outlet />
-      </main>
+      <TopBar onOpenPalette={openPalette} />
+      <SimulationBanner />
+      <div className="relative z-10 flex-1 md:flex">
+        <NavRail />
+        <main
+          id="main-content"
+          ref={main}
+          tabIndex={-1}
+          className="@container mx-auto min-w-0 max-w-[120rem] flex-1 px-3 pb-24 pt-5 focus:outline-none md:px-6 md:pb-10 md:pt-6 lg:px-8"
+        >
+          <Outlet />
+        </main>
+      </div>
+      <CommandPalette open={paletteOpen} onClose={closePalette} />
     </div>
   );
 }

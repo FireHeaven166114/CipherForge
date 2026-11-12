@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes what is built (Phases 1 to 3) and how the remaining modules are intended to
+This document describes what is built (Phases 1 to 3b) and how the remaining modules are intended to
 plug in. Anything not built is labelled **planned**. The intended end state follows the project
 specification; nothing planned here should be read as implemented.
 
@@ -77,8 +77,8 @@ rules or incident handling yet.
 | Module | Purpose | Status | Where it lives or will live |
 | --- | --- | --- | --- |
 | Core platform | Config, logging, auth, errors, health | **Phase 1 done** | `backend/app/core`, `security`, `api`, `database` |
-| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API) and **Phase 3 done** (analyst screens) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py`; UI in `frontend/src` |
-| SOC | Command-centre UI, triage, analytics | **Phase 3 done** for threat intelligence: overview, investigate, indicator list and detail, status. Alerts, incidents and live telemetry are not built | `frontend/src` |
+| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API) and **Phases 3 and 3b done** (analyst screens) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py`; UI in `frontend/src` |
+| SOC | Command-centre UI, triage, analytics | **Phases 3 and 3b done** for threat intelligence: the overview command deck, investigate, indicator list and detail, status. Alerts, incidents and live telemetry are not built | `frontend/src` |
 | Sentinel | Defensive network monitoring and anomaly detection | Not started | `sensor/`, `detection/` |
 | Core (correlation) | Event normalisation, correlation, scoring, rules | Indicator scoring only; event correlation and rules not started | `correlation/`, `detection/` |
 | Case | Incidents, notes, timelines | Not started | `services/`, `models/` |
@@ -96,10 +96,17 @@ which use `models`, `collectors` and `correlation`; `core` and `security` are sh
 | `security/` | Entra ID token validation, role-based access control and the in-memory rate limiter. |
 | `database/` | Engine and session factory, the readiness probe. |
 | `models/`, `schemas/` | SQLAlchemy tables and Pydantic request/response models. |
-| `services/` | Indicator normalisation, the investigation workflow (caching, scoring, storage) and the audit writer. |
+| `services/` | Indicator normalisation, the investigation workflow (caching, scoring, storage), the overview aggregation (`overview.py`) and the audit writer. |
 | `collectors/` | One adapter per provider (AbuseIPDB, OTX) behind a common interface, plus response sanitising helpers. |
 | `correlation/` | The pure, explainable scoring function (`intel-risk-v1`). |
 | `detection/`, `workers/` | Placeholders for later phases. |
+
+`backend/devtools/` sits beside `app/`, not inside it: the demo server, its simulated providers and
+its synthetic data (see [Try it without API keys](../README.md#try-it-without-api-keys)). `app/`
+never imports it, the Docker build context leaves it out, and its database is confined to
+`backend/.demo/`. It exists so the dashboard can be seen and tested with a populated database
+without provider keys; the only trace of it in `app/` is the `simulated` flag that its adapters set
+and the dashboard turns into a banner.
 
 ### Request lifecycle
 
@@ -150,33 +157,62 @@ including upgrade, downgrade and upgrade again on the real engine. Production re
 
 ## Frontend
 
-React 19 and TypeScript, built with Vite and styled with Tailwind CSS (dark theme only). Routing is
-`react-router`; there is no state-management or charting library.
+React 19 and TypeScript, built with Vite and styled with Tailwind CSS 4 (dark theme only). Routing is
+`react-router`. There is no state-management, data-fetching or charting library: the only runtime
+dependencies are React, React Router and two self-hosted font packages (Oxanium and JetBrains
+Mono), so the page never asks a third party for anything. The production build is one JavaScript
+chunk of about 390 KiB (minified, before compression) and about 67 KiB of CSS.
+
+Phase 3 built the screens. Phase 3b redesigned them as a dense "command deck" and added the one
+aggregate endpoint the overview draws from. The screens contain no scoring logic of their own: they
+show what the API returns and, where it is silent, say so.
 
 | Route | Screen | Data |
 | --- | --- | --- |
-| `/` | Overview | `GET /intel/stats` and `GET /intel/indicators?sort=recent&limit=5` |
+| `/` | Overview (the command deck) | `GET /intel/overview`, asked again every minute while the tab is visible |
 | `/investigate` | Investigate an indicator | `POST /intel/investigate` |
 | `/indicators` | Search, filter and page the stored indicators. The filters live in the query string. | `GET /intel/indicators` |
 | `/indicators/:indicatorId` | The stored record, with a re-check button | `GET /intel/indicators/{id}`, `POST /intel/investigate` |
 | `/status` | API and database health | `GET /health`, `GET /ready` |
 | `*` | Page not found | none |
 
+Around every route sits the shell (`components/Layout.tsx`): a skip link, the top bar (UTC clock,
+an API beacon, the identity and roles the API reports from `GET /api/v1/me`, the effects switch and
+the palette button), the navigation rail (a bottom tab bar on phones), the content area and the
+command palette.
+The shell shares one `/health` and `/ready` check (on load, on demand and every 30 seconds) between
+the beacon and the status page, and reads `GET /intel/stats` once for a single purpose: if any
+provider reports `simulated`, a banner says the data is demo data. It stays silent if that request
+fails, because the pages report their own errors.
+
 ```text
-pages/            route-level screens
-components/       shared presentational components (Card, Pagination, BarMeter, ErrorNotice, ...)
-components/intel/ the investigation view: verdict, one card per provider, score, internal evidence
-features/         domain logic with no React (labels, formatting, filters, links, summaries)
-hooks/            stateful logic (useApiResource, useInvestigate, useServiceStatus, useNow, useDocumentTitle)
-services/         the API client, per-resource services and the runtime response checks
-types/            API types mirroring the backend schemas
+pages/               route-level screens
+components/          shared presentational pieces (Card, Pagination, ErrorNotice, ...) and Layout
+components/shell/    top bar, navigation rail, command palette, shortcuts, API beacon, backdrop, banner
+components/hud/      the visual language: Panel, PageHeader, StatusLed, AnimatedNumber, DecodeText, CipherWheel, Overlay
+components/charts/   hand-built SVG charts (area, ring, radar, dot map, heat grids, ranked bars, sparkline, gauge)
+components/overview/ the overview's tiles, drawer, lists and panels
+components/intel/    the investigation view: verdict, one card per provider, score, internal evidence
+components/status/   the shared service check and the status page's "reactor" graphic
+effects/             the visual-effects switch (EffectsProvider, useEffects)
+features/            domain logic with no React (labels, formatting, filters, links, summaries, map data)
+hooks/               stateful logic (useApiResource, useLiveResource, useInvestigate, useServiceStatus, ...)
+services/            the API client, per-resource services and the runtime response checks
+types/               API types mirroring the backend schemas
+e2e/                 the Playwright browser tests (not part of the built app)
 ```
 
 All network access goes through `services/apiClient.ts`: relative URLs, a timeout, no caching,
 runtime shape checks on responses, and errors that surface only the server's sanitised message and
 correlation ID. A token provider can be registered (for the future MSAL wrapper); the token is
-requested per call and never stored, and the app writes nothing to `localStorage`,
-`sessionStorage` or cookies.
+requested per call and never stored. The app sets no cookies and uses neither `sessionStorage` nor
+IndexedDB. The one thing it keeps in the browser is the visual-effects choice, under the
+`localStorage` key `cipherforge.effects`; a browser test fails if anything else appears.
+
+`useLiveResource` serves the overview: it asks again on a timer and when the tab becomes visible
+again, and while it does it keeps showing the last good answer. A failed refresh turns the "Live"
+label into "Stale" instead of blanking the screen, and a late answer from a superseded request is
+discarded.
 
 How the screens keep the evidence honest:
 
@@ -202,6 +238,83 @@ How the screens keep the evidence honest:
 - **Accessibility basics**: a skip link, one `h1` per screen, a landmark `main` that receives focus
   after each navigation, `aria-current` on the active navigation link, labelled controls, a polite
   live region for progress and results, and a per-screen document title.
+- **Every chart has a text equivalent.** The drawing is hidden from assistive technology and a
+  visually hidden table (or list) carries the exact numbers, so nothing is learnt only by looking.
+  Types, risk bands and statuses are always a word and a shape as well as a colour.
+- **Numbers are never cut off.** Counts from one million up are shortened in tiles (ten thousand up
+  inside radar labels, axes and tooltips), with the exact value in the tooltip and in the text
+  equivalent. A long value wraps or scrolls in its box; it does not overflow the page.
+- **Geography is labelled for what it is.** The map and the country list say "provider-reported
+  country": it is what a provider says about an indicator, not where an attacker is. The map's
+  markers are placed on country label points, not on cities.
+- **Demo data cannot pass for real data.** Whenever any provider is simulated, a banner across the
+  top says so on every screen.
+- **Times are UTC**, written as such, so a screenshot or a shared link means the same thing to
+  everyone.
+
+### The command deck
+
+The look is a set of Tailwind design tokens in `src/index.css` (ink surfaces, cipher cyan, severity
+colours, two self-hosted fonts) and a small kit in `components/hud/`: a `Panel` with corner brackets
+and a short module code, status LEDs, numbers that count up, a cipher-wheel motif and an overlay for
+the palette and drawers. Colour is never the only carrier of meaning, and text is never dimmer than
+`ink-300` because anything dimmer fails WCAG AA contrast on a panel.
+
+Effects are the animated backdrop (glow, grid, scanlines, a slow beam), counting numbers, charts that
+draw themselves, decoded text and the spinning wheel. One switch (`effects/EffectsProvider`) turns
+them all off: it writes `data-effects="on|off"` on `<html>` and the stylesheet stills every animation
+from that one place. The operating system's reduced-motion setting always wins: the switch is then
+disabled, with a tooltip that says why. Nothing depends on an effect, and the tests run both ways.
+
+The charts are small SVG components with no chart library behind them. `geometry.ts` holds the
+shared maths (axes, smooth curves, polar ticks, ring slices, heat levels and the map projection),
+`useChartWidth` measures the box a chart is given so it is drawn in real pixels instead of
+stretched, and each chart is built from the same numbers as its text equivalent. The map is a dot
+grid of land and sea with one label point per country. Both are generated from Natural Earth (public
+domain, pinned to release v5.1.2) by `scripts/build-world-data.mjs` and committed, so building the
+app and loading the page need no network.
+
+Navigation is keyboard first: `/` or `Ctrl K` opens the command palette (pages, "Investigate", "Search
+indicators", the effects switch), and `G` then `O`, `I`, `L` or `S` goes to a page. "Investigate" hands
+the typed value to its page in the router's history state, not in the address, so a lookup never
+puts the indicator in a URL. (The list's search does keep its query in the address, on purpose, so
+that a filtered view can be bookmarked.)
+
+### Layout rules
+
+The layout answers to the width of the content area, not to the window: the navigation rail, the page
+padding and the user's text size all change how much room a panel really has. The `<main>` element
+and the top bar are CSS containers (`@container`), and the thresholds are in `rem`
+(`--container-split: 52rem`, `--container-deck: 68rem`), so enlarged text reflows instead of
+overflowing. Browser tests check 320 to 1440 px, 200% zoom and 200% text. Rules that were learnt from
+real failures in those tests:
+
+- A grid that only declares a column count at a breakpoint still has one implicit track. Declare
+  `grid-cols-1` as well, and give grid and flex children `min-w-0`.
+- A `truncate`d (non-wrapping) line does not let its block ancestors shrink. Text that should wrap
+  needs `overflow-wrap`. `break-word`, which the stylesheet sets on `body`, lets text break but does
+  not lower a box's minimum width, so a long value in a grid or flex child or a table cell also gets
+  `wrap-anywhere`.
+- Visually hidden (`sr-only`) boxes are absolutely positioned, so an `overflow: hidden` ancestor does
+  not clip them. A visually hidden table ignores width and overflow, so wrap it in a hidden `div`.
+- A scrollable region needs a keyboard-reachable way to scroll, or must not scroll at all (axe rule
+  `scrollable-region-focusable`).
+
+The phone navigation shows "Status" where the desktop rail says "System status" (the accessible name
+stays "System status"); the identity chips are hidden when the top bar is narrower than 75rem.
+
+### Tests
+
+Vitest and Testing Library cover components, hooks and helpers. The Playwright suite in `e2e/`
+drives a real browser through the production build, served with the headers from `nginx.conf`,
+against the real API running with simulated providers on a seeded throwaway database. It checks
+figures against the API's own answers, runs every screen through axe-core, enlarges the text and
+shrinks the window, feeds the page hostile and extreme data, and verifies in the browser itself that
+the Content Security Policy blocks injected content and that nothing leaves the origin. See
+[Testing the dashboard](../README.md#testing-the-dashboard) to run it and for what a green run does
+not prove.
+
+### Sign-in and routing
 
 There is no browser sign-in (MSAL) yet, so the screens work against `AUTH_MODE=dev` only. nginx
 serves `index.html` for unknown paths so that client routes survive a reload, and it proxies only
@@ -220,9 +333,13 @@ serves `index.html` for unknown paths so that client routes survive a reload, an
 | Audit row written in the same transaction as the result | A stored score always has its audit row, and refused input is audited too. Reads are not audited (see [security.md](security.md)). |
 | `httpx2` instead of `httpx` | The maintained continuation of HTTPX; Starlette's test client prefers it. The provider adapters use it, and its request logging is silenced because it records full request URLs, which contain the indicators being investigated. |
 | TypeScript pinned to 6.0.3 | The latest stable `typescript-eslint` does not yet support TypeScript 7. |
-| React Router and no other runtime library for the UI | Phase 3 needs client-side routes and nothing else. Loading and error state is one small hook (`useApiResource`) that cancels the request in flight when the screen goes away or the query changes, so a late answer is never shown. A state-management or data-fetching library would add dependencies without removing code. |
-| Hand-built bars instead of a charting library | The two Phase 3 charts are small distributions. Each is a list whose text carries the number, with a bar drawn from the same value, so it is accessible by construction and needs no dependency. Recharts remains the planned choice for the time-series views that later telemetry will need; it is not installed. |
-| "Not assessed" is its own state in the UI | The API reports a score of 0 with confidence 0 when no provider answered. Showing that as "low" or "informational" would read as "checked and clean", so the UI shows a distinct badge and says that no provider answered. |
+| React Router and no other runtime library for the UI | The screens need client-side routes and nothing else. Loading and error state is two small hooks (`useApiResource`, and `useLiveResource` for the self-refreshing overview) that cancel the request in flight when the screen goes away or the query changes, so a late answer is never shown. A state-management or data-fetching library would add dependencies without removing code. The fonts are the only other runtime packages, self-hosted so the Content Security Policy can keep `font-src 'self'`. |
+| Hand-built SVG charts instead of a charting library | The overview needs a few chart types (area, ring, radar, heat grids, a dot map, ranked bars). Each is a small component that is drawn from the same numbers as its hidden text equivalent, so it is accessible by construction, takes its colours from the design tokens and adds no dependency or third-party request. A library would add far more code than these components and would still need the text equivalents written. Revisit it if later telemetry needs zooming or brushing over long time series. |
+| The overview is aggregated on the server, on every request | One `GET /intel/overview` gives the dashboard every figure from a single consistent snapshot, with bounded scans (the 2,000 most recent provider answers and 20,000 audit rows of the 14-day window) and flags when a bound cut it short. The browser never adds numbers up, so it cannot disagree with the API. The cost is a query per refresh; a busier installation would pre-aggregate or cache it. |
+| Layout follows the container, in `rem` | The rail, the padding and the user's text size change a panel's real width, so breakpoints on the window gave overlapping or clipped content. Container queries (`@split`, `@deck`) in `rem` reflow with the text size. |
+| Demo mode is dev-only code beside the app, not in it | The dashboard needs populated data to be seen and tested, and no provider keys exist. `backend/devtools` provides simulated providers and a seeded database that can only live in `backend/.demo/`; `app/` never imports it, and the Docker image excludes it. |
+| End-to-end tests run the production build against the real API | The unit tests cannot see layout, the Content Security Policy or cross-screen behaviour. The suite serves `dist/` behind nginx's own header values and talks to the real API, so a green run says something about what ships. Its limits are listed in the README. |
+| "Not assessed" is its own state in the UI | The API reports a score of 0 with confidence 0 when no provider answered. Showing that as "low" or "informational" would read as "checked and clean", so the UI shows a distinct badge, counts it as its own group on the overview, and says that no provider answered. |
 | Exact version pins | Reproducible builds; Dependabot proposes updates and CI vets them. |
 
 ## How later phases plug in
@@ -240,4 +357,8 @@ serves `index.html` for unknown paths so that client routes survive a reload, an
    anything automatically.
 6. **Screens** (`frontend/src/pages`) call one service file per API area (`services/`), keep domain
    logic in `features/` and shared pieces in `components/`. A new module adds its route in
-   `App.tsx` and its link in the `NAV_ITEMS` list in `components/Layout.tsx`.
+   `App.tsx`, its link to `NAV_ITEMS` in `components/shell/NavRail.tsx`, its `G`-key shortcut in
+   `components/shell/useShortcuts.ts` and its entry in `PAGES` in
+   `components/shell/paletteItems.ts`. Its unbuilt state stays visible in the overview's modules
+   panel (`components/overview/ModulesPanel.tsx`) until the module exists, and a new screen gets a
+   scene in `e2e/a11y.spec.ts` and checks in the responsive and untrusted-data specs.

@@ -19,13 +19,20 @@ export default function InvestigationView({ investigation }: { investigation: In
       <VerdictCard indicator={indicator} score={score} />
 
       <section aria-labelledby={headingId}>
-        <h2 id={headingId} className="text-lg font-semibold tracking-tight">
+        <h2
+          id={headingId}
+          className="flex items-center gap-2 text-[0.8rem] font-semibold uppercase tracking-[0.14em] text-ink-100"
+        >
+          <span aria-hidden="true" className="size-1.5 shrink-0 rotate-45 bg-cipher" />
+          <span aria-hidden="true" className="font-mono text-[0.68rem] font-normal text-ink-300">
+            SRC
+          </span>
           Provider answers
         </h2>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ink-300">
           Each provider is shown on its own, before CipherForge combines them.
         </p>
-        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-4 @split:grid-cols-2">
           {providers.map((provider) => (
             <ProviderCard key={provider.provider} provider={provider} />
           ))}

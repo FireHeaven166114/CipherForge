@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatClock,
+  formatCompactCount,
+  formatCount,
   formatPoints,
   formatRelative,
   formatStrength,
@@ -35,6 +38,13 @@ describe("formatUtc", () => {
   });
 });
 
+describe("formatClock", () => {
+  it("shows the UTC time of day with seconds, whatever the browser's zone", () => {
+    expect(formatClock(new Date("2026-05-01T09:05:03Z"))).toBe("09:05:03 UTC");
+    expect(formatClock(new Date("2026-05-01T23:59:59.999+02:00"))).toBe("21:59:59 UTC");
+  });
+});
+
 describe("formatRelative", () => {
   const now = new Date("2026-05-10T12:00:00Z");
   const at = (iso: string) => formatRelative(new Date(iso), now);
@@ -66,6 +76,27 @@ describe("formatStrength", () => {
     expect(formatStrength(0.5)).toBe("0.50");
     expect(formatStrength(1)).toBe("1.00");
     expect(formatStrength(null)).toBe("Not available");
+  });
+});
+
+describe("formatCount and formatCompactCount", () => {
+  it("group thousands in full, whatever the browser's locale", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(1234)).toBe("1,234");
+    expect(formatCount(987_654_321_012)).toBe("987,654,321,012");
+    expect(formatCompactCount(999_999)).toBe("999,999");
+  });
+
+  it("shorten a million or more, and only then", () => {
+    expect(formatCompactCount(1_000_000)).toBe("1M");
+    expect(formatCompactCount(2_450_000)).toBe("2.5M");
+    expect(formatCompactCount(987_654_321_012)).toBe("987.7B");
+  });
+
+  it("can start shortening earlier, for a chart label that has little room", () => {
+    expect(formatCompactCount(9_999, 10_000)).toBe("9,999");
+    expect(formatCompactCount(12_480, 10_000)).toBe("12.5K");
+    expect(formatCompactCount(250_000, 10_000)).toBe("250K");
   });
 });
 

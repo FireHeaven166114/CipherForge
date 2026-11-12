@@ -14,6 +14,7 @@ from app.schemas.intel import (
     IndicatorPage,
     InvestigateRequest,
     InvestigationResponse,
+    OverviewResponse,
     StatsResponse,
 )
 from app.security.auth import Principal, require_roles
@@ -118,7 +119,22 @@ def list_indicators(
     service: IntelServiceDep,
     session: DbSession,
     indicator_type: Annotated[IndicatorType | None, Query(alias="type")] = None,
-    classification: Annotated[Classification | None, Query()] = None,
+    classification: Annotated[
+        list[Classification] | None,
+        Query(
+            max_length=len(Classification),
+            description="Score band. Repeat it to match several, such as high and critical.",
+        ),
+    ] = None,
+    assessed: Annotated[
+        bool | None,
+        Query(
+            description=(
+                "true keeps indicators at least one provider answered for; false keeps those no "
+                "provider answered for, whose score of 0 says nothing about them."
+            )
+        ),
+    ] = None,
     q: Annotated[
         str | None, Query(max_length=256, description="Case-insensitive substring of the value.")
     ] = None,
@@ -129,7 +145,8 @@ def list_indicators(
     return service.list_indicators(
         session,
         indicator_type=indicator_type,
-        classification=classification,
+        classifications=classification or (),
+        assessed=assessed,
         query=q,
         sort=sort,
         limit=limit,
@@ -140,3 +157,13 @@ def list_indicators(
 @router.get("/stats", response_model=StatsResponse, summary="Counts for the overview dashboard")
 def stats(service: IntelServiceDep, session: DbSession) -> StatsResponse:
     return service.stats(session)
+
+
+@router.get(
+    "/overview",
+    response_model=OverviewResponse,
+    summary="Aggregates for the command-deck dashboard",
+)
+def overview(service: IntelServiceDep, session: DbSession) -> OverviewResponse:
+    """Read-only: figures computed from stored indicators, provider answers and the lookup trail."""
+    return service.overview(session)

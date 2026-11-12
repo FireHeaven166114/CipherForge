@@ -1,7 +1,11 @@
 import Card from "../components/Card";
+import PageHeader from "../components/hud/PageHeader";
+import Panel from "../components/hud/Panel";
+import StatusReactor from "../components/status/StatusReactor";
 import StatusBadge, { type Tone } from "../components/StatusBadge";
-import { BUTTON } from "../components/styles";
+import { BUTTON, LABEL } from "../components/styles";
 import type { CheckResult, OverallStatus } from "../features/status/overallStatus";
+import { formatClock } from "../features/intel/format";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useServiceStatus } from "../hooks/useServiceStatus";
 import type { ApiError } from "../services/apiClient";
@@ -14,12 +18,19 @@ const OVERALL: Record<OverallStatus, { tone: Tone; label: string; detail: string
   down: { tone: "bad", label: "Down", detail: "The API cannot be reached." },
 };
 
+const TONE_TEXT: Record<Tone, string> = {
+  ok: "text-ok",
+  warn: "text-warn",
+  bad: "text-bad",
+  neutral: "text-ink-100",
+};
+
 function ErrorDetail({ error }: { error: ApiError }) {
   return (
     <p>
       {error.message}
       {error.correlationId ? (
-        <span className="mt-1 block text-slate-400">Reference: {error.correlationId}</span>
+        <span className="mt-1 block font-mono text-xs text-ink-300">Reference: {error.correlationId}</span>
       ) : null}
     </p>
   );
@@ -27,22 +38,26 @@ function ErrorDetail({ error }: { error: ApiError }) {
 
 function LivenessCard({ result }: { result: CheckResult<HealthResponse> }) {
   if (result.state === "idle") {
-    return <Card title="API" badge={<StatusBadge tone="neutral">Checking</StatusBadge>}>Waiting for a response…</Card>;
+    return (
+      <Card title="API" code="SYS-01" badge={<StatusBadge tone="neutral">Checking</StatusBadge>}>
+        Waiting for a response…
+      </Card>
+    );
   }
   if (result.state === "error") {
     return (
-      <Card title="API" badge={<StatusBadge tone="bad">Unreachable</StatusBadge>}>
+      <Card title="API" code="SYS-01" badge={<StatusBadge tone="bad">Unreachable</StatusBadge>}>
         <ErrorDetail error={result.error} />
       </Card>
     );
   }
   return (
-    <Card title="API" badge={<StatusBadge tone="ok">Up</StatusBadge>}>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-        <dt className="text-slate-400">Service</dt>
-        <dd>{result.data.service}</dd>
-        <dt className="text-slate-400">Version</dt>
-        <dd>{result.data.version}</dd>
+    <Card title="API" code="SYS-01" badge={<StatusBadge tone="ok">Up</StatusBadge>}>
+      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-2">
+        <dt className={LABEL}>Service</dt>
+        <dd className="font-mono text-ink-50">{result.data.service}</dd>
+        <dt className={LABEL}>Version</dt>
+        <dd className="font-mono text-ink-50">{result.data.version}</dd>
       </dl>
     </Card>
   );
@@ -50,22 +65,26 @@ function LivenessCard({ result }: { result: CheckResult<HealthResponse> }) {
 
 function ReadinessCard({ result }: { result: CheckResult<ReadinessResponse> }) {
   if (result.state === "idle") {
-    return <Card title="Database" badge={<StatusBadge tone="neutral">Checking</StatusBadge>}>Waiting for a response…</Card>;
+    return (
+      <Card title="Database" code="SYS-02" badge={<StatusBadge tone="neutral">Checking</StatusBadge>}>
+        Waiting for a response…
+      </Card>
+    );
   }
   if (result.state === "error") {
     return (
-      <Card title="Database" badge={<StatusBadge tone="warn">Unknown</StatusBadge>}>
+      <Card title="Database" code="SYS-02" badge={<StatusBadge tone="warn">Unknown</StatusBadge>}>
         <ErrorDetail error={result.error} />
       </Card>
     );
   }
   const database = result.data.checks.database;
   return database === "ok" ? (
-    <Card title="Database" badge={<StatusBadge tone="ok">Reachable</StatusBadge>}>
+    <Card title="Database" code="SYS-02" badge={<StatusBadge tone="ok">Reachable</StatusBadge>}>
       The API can run queries against the database.
     </Card>
   ) : (
-    <Card title="Database" badge={<StatusBadge tone="bad">Unavailable</StatusBadge>}>
+    <Card title="Database" code="SYS-02" badge={<StatusBadge tone="bad">Unavailable</StatusBadge>}>
       The API is running but cannot reach the database.
     </Card>
   );
@@ -78,30 +97,45 @@ export default function StatusPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">System status</h1>
-          <p className="mt-1 text-sm text-slate-400" aria-live="polite">
-            {summary.detail}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <StatusBadge tone={summary.tone}>{summary.label}</StatusBadge>
-          <button type="button" onClick={refresh} disabled={isRefreshing} className={BUTTON}>
-            {isRefreshing ? "Checking…" : "Refresh"}
-          </button>
-        </div>
-      </div>
+      <PageHeader code="MOD-04 · SYSTEM CORE" title="System status" />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <Panel bodyClassName="p-6">
+        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
+          <StatusReactor
+            tone={summary.tone}
+            spinning={overall === "checking" || overall === "operational"}
+          />
+          {/* A basis, not flex-1: with no basis the text column never wraps, it is squeezed beside the ring. */}
+          <div className="min-w-0 grow basis-56 space-y-3">
+            <p className={LABEL}>Overall status</p>
+            <p className={`text-4xl font-semibold tracking-tight ${TONE_TEXT[summary.tone]}`}>
+              {summary.label}
+            </p>
+            <p className="text-sm text-ink-200" aria-live="polite">
+              {summary.detail}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+              <button
+                type="button"
+                onClick={isRefreshing ? undefined : refresh}
+                aria-disabled={isRefreshing || undefined}
+                className={BUTTON}
+              >
+                {isRefreshing ? "Checking…" : "Refresh"}
+              </button>
+              <p className="font-mono text-xs text-ink-300">
+                {checkedAt ? `Last checked ${formatClock(checkedAt)}.` : "Not checked yet."} This
+                page refreshes automatically every 30 seconds.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <div className="grid grid-cols-1 gap-4 @lg:grid-cols-2">
         <LivenessCard result={health} />
         <ReadinessCard result={readiness} />
       </div>
-
-      <p className="text-xs text-slate-400">
-        {checkedAt ? `Last checked ${checkedAt.toLocaleTimeString()}.` : "Not checked yet."} This
-        page refreshes automatically every 30 seconds.
-      </p>
     </div>
   );
 }

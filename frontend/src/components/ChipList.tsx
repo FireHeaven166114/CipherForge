@@ -10,12 +10,12 @@ export default function ChipList({ items, label }: { items: readonly string[]; l
       {shown.map((item, index) => (
         <li
           key={`${item}:${index}`}
-          className="max-w-full break-words rounded border border-slate-600 bg-slate-800 px-2 py-0.5 text-xs text-slate-200"
+          className="max-w-full break-words rounded-[3px] border border-ink-600 bg-ink-800/70 px-2 py-0.5 font-mono text-xs text-ink-100"
         >
           {item}
         </li>
       ))}
-      {hidden > 0 ? <li className="px-1 py-0.5 text-xs text-slate-400">+{hidden} more</li> : null}
+      {hidden > 0 ? <li className="px-1 py-0.5 text-xs text-ink-300">+{hidden} more</li> : null}
     </ul>
   );
 }

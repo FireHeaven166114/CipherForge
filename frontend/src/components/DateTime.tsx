@@ -13,13 +13,13 @@ interface DateTimeProps {
 export default function DateTime({ value, fallback = "Never", stacked = false }: DateTimeProps) {
   const now = useNow();
   const date = parseTimestamp(value);
-  if (date === null) return <span className="text-slate-400">{fallback}</span>;
+  if (date === null) return <span className="text-ink-300">{fallback}</span>;
 
   const relative = formatRelative(date, now);
   return (
     <time dateTime={date.toISOString()}>
       {formatUtc(date)}{" "}
-      <span className={stacked ? "block text-xs text-slate-400" : "text-slate-400"}>
+      <span className={stacked ? "block text-xs text-ink-300" : "text-ink-300"}>
         {stacked ? relative : `(${relative})`}
       </span>
     </time>

@@ -26,7 +26,7 @@ export default function Pagination({
 
   return (
     <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 text-sm">
-      <p className="text-slate-300">
+      <p className="text-ink-200">
         Showing {first}–{last} of {total}
       </p>
       <div className="flex items-center gap-2">
@@ -48,7 +48,7 @@ export default function Pagination({
         </button>
       </div>
       {hasMore && atLimit ? (
-        <p className="w-full text-slate-400">
+        <p className="w-full text-ink-300">
           Only the first {maxPage * pageSize} results can be browsed. Narrow the filters to see the
           rest.
         </p>

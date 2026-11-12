@@ -4,10 +4,17 @@ import {
   makeIndicator,
   makeInvestigation,
   makeNotAssessed,
+  makeOverview,
   makePage,
   makeStats,
 } from "../test/fixtures";
-import { isIndicator, isIndicatorPage, isInvestigation, isStats } from "./intelGuards";
+import {
+  isIndicator,
+  isIndicatorPage,
+  isInvestigation,
+  isOverview,
+  isStats,
+} from "./intelGuards";
 
 function without(value: object, key: string): unknown {
   const copy: Record<string, unknown> = { ...(value as Record<string, unknown>) };
@@ -94,8 +101,72 @@ describe("isStats", () => {
     expect(
       isStats({
         ...makeStats(),
-        providers: [{ name: "otx", display_name: "OTX", configured: true, supported_types: ["mac"] }],
+        providers: [
+          {
+            name: "otx",
+            display_name: "OTX",
+            configured: true,
+            supported_types: ["mac"],
+            simulated: false,
+          },
+        ],
       }),
     ).toBe(false);
+  });
+
+  it("requires every provider to say whether it is simulated", () => {
+    const [provider] = makeStats().providers;
+    expect(provider).toBeDefined();
+    expect(isStats({ ...makeStats(), providers: [without(provider as object, "simulated")] })).toBe(
+      false,
+    );
+    expect(isStats({ ...makeStats(), providers: [{ ...provider, simulated: "no" }] })).toBe(false);
+  });
+});
+
+describe("isOverview", () => {
+  it("accepts a complete overview, including an empty one", () => {
+    expect(isOverview(makeOverview())).toBe(true);
+    expect(
+      isOverview(
+        makeOverview({
+          matrix: [],
+          series: [],
+          activity: [],
+          countries: [],
+          malware_families: [],
+          attack_techniques: [],
+          tags: [],
+          top_risk: [],
+          recent: [],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("requires every section the dashboard reads", () => {
+    const valid = makeOverview();
+    for (const key of Object.keys(valid)) expect(isOverview(without(valid, key))).toBe(false);
+  });
+
+  it("rejects malformed sections", () => {
+    const valid = makeOverview();
+    const broken: unknown[] = [
+      { ...valid, kpis: { ...valid.kpis, lookups_24h: -1 } },
+      { ...valid, kpis: without(valid.kpis, "critical_indicators") },
+      { ...valid, by_classification: { high: "many" } },
+      { ...valid, matrix: [{ indicator_type: "mac", counts: {} }] },
+      { ...valid, series: [{ day: "yesterday", lookups: 1, high_risk_lookups: 0, new_indicators: 0 }] },
+      { ...valid, series: [{ day: "2026-05-01", lookups: 1.5, high_risk_lookups: 0, new_indicators: 0 }] },
+      { ...valid, activity: [{ day: "2026-05-01", hours: [1, 2, 3] }] },
+      { ...valid, activity: [{ day: "2026-05-01", hours: Array.from({ length: 24 }, () => "x") }] },
+      { ...valid, countries: [{ key: "NL", count: 1, max_risk: 10 }] },
+      { ...valid, countries: [{ key: "NL", count: 1, max_risk: 10, samples: [{ indicator_id: "x" }] }] },
+      { ...valid, top_risk: [{ indicator_id: "x" }] },
+      { ...valid, scope: { ...valid.scope, lookups_truncated: "no" } },
+      { ...valid, providers: [{ name: "otx" }] },
+    ];
+
+    for (const value of broken) expect(isOverview(value)).toBe(false);
   });
 });

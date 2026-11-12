@@ -135,26 +135,27 @@ described as infrastructure as code (Bicep or Terraform) in `infra/`. None of it
 
 ## Verification status
 
-What was actually run while building Phases 1 to 3, and what was not. The build machine had no
+What was actually run while building Phases 1 to 3b, and what was not. The build machine had no
 Docker.
 
 | Item | Result |
 | --- | --- |
-| Backend tests | 787 passing and 1 skipped. The suite runs on SQLite and on a real PostgreSQL 16.2; the skip is intentional (SQLite has no `TRUNCATE`). SQLite alone gives 615 passing, because the PostgreSQL variants skip without `TEST_DATABASE_URL`. Line coverage 98%. |
-| Backend static checks | `ruff check`, `ruff format --check`, `bandit` and `pip-audit` all clean. |
-| Frontend checks | Type check, ESLint, 154 unit and component tests (in 23 files) and the production build all pass, and `npm audit` reports no vulnerabilities. CI runs the same checks on every push. |
-| Dashboard in a real browser | Headless Microsoft Edge drove the production bundle against the live API on PostgreSQL 16.2 (`AUTH_MODE=dev`, no provider keys). The bundle was served by a small Node server standing in for nginx: it sends the same headers and Content Security Policy and proxies `/api`, `/health` and `/ready`. All 24 checks passed: navigation, the skip link and where focus lands, a rejected value showing the API's 422 message and its reference, investigating an indicator, opening and re-checking the saved record, the list with search and filters kept in the address, Back, a bookmarked deep link, the status page, an unknown route, a malformed id sending no request, and a 375 px wide screen without sideways scrolling. The browser reported no CSP violations. Provider evidence was not available, so the only investigation result seen live was "Not assessed"; the screens for real evidence were checked in the browser with made-up example data and by component tests. |
+| Backend tests | 866 passing and 1 skipped. The suite runs on SQLite and on a real PostgreSQL 16.2; the skip is intentional (SQLite has no `TRUNCATE`). SQLite alone gives 669 passing, because the PostgreSQL variants skip without `TEST_DATABASE_URL`. Line coverage 99%. |
+| Backend static checks | `ruff check`, `ruff format --check`, `bandit` (on `app/` and on the dev-only `devtools/`) and `pip-audit` all clean. |
+| Frontend checks | Type check (the app, the build tooling and the browser tests), ESLint, 376 unit and component tests (in 48 files) and the production build all pass, and `npm audit` reports no vulnerabilities. CI runs the same checks on every push. |
+| Dashboard in a real browser | The Playwright suite in `frontend/e2e/` (583 tests, about 18 minutes) drove the production build in headless Microsoft Edge on Windows against the live demo API: the real application with simulated providers and a seeded SQLite database (see [Try it without API keys](../README.md#try-it-without-api-keys)). All 583 passed. The build was served by a small Node server standing in for nginx: it sends the headers and Content Security Policy read from `frontend/nginx.conf` and proxies `/api`, `/health` and `/ready`. The suite covers every screen and flow with figures checked against the API's own answers, keyboard use, axe-core and a contrast audit, widths from 320 to 1440 px and 200% text and zoom, the security headers and policy, 20 injected-content attacks, hostile and very long provider data, privacy (no cookies, nothing sent to another origin) and one investigation followed through every screen. The browser reported no CSP violations. It did not run against PostgreSQL (the overview's queries are covered on PostgreSQL by the backend tests), against nginx itself, or in any browser but Edge, and the providers were simulated, so no real provider answer was seen; see [Testing the dashboard](../README.md#testing-the-dashboard). CI runs the suite in Chromium, which has not happened yet. |
 | Database and API on PostgreSQL | Alembic upgrade, downgrade and upgrade again (both migrations) on PostgreSQL 16.2. A live server against it answered `/health`, `/ready` and `/api/v1/me`, and (without provider keys) the intel endpoints: investigate, refused private and hostile input (422, audited without the input), list, stats and an unknown id (404). The audit table refused a `DELETE`. Provider calls were not part of this check. |
 | Provider adapters (AbuseIPDB, OTX) | Tested against recorded response shapes through a stub HTTP transport. **Never called against the live services.** Endpoints, headers and the main fields were checked against AbuseIPDB's public documentation and AlienVault's own client library; the OTX pulse-level fields are not confirmed against a live response. |
 | Compose and `.env.example` against the settings | A test parses both files and fails if they drift from the application's defaults, if the keys reach the migration job, or if forwarded headers are trusted from public networks by default. |
 | nginx configuration | Syntax checked and exercised with a real nginx 1.30.6 build (using a copy that differs only in listen address, document root and upstream): security headers appear once, caching and gzip, SPA fallback, 404 for missing assets, proxying of the API with the error envelope intact, correlation-ID replacement and the 413 body limit. |
 | `docker-compose.yml` | Validated against the Compose specification JSON schema. **Never run.** |
 | Dockerfiles | **Never built.** The base image tags were confirmed to exist. |
-| GitHub Actions workflow | `actionlint` clean; pinned action SHAs confirmed to match their release tags. **Never run on GitHub.** |
+| GitHub Actions workflow | `actionlint` clean, including the browser end-to-end job; pinned action SHAs confirmed to match their release tags. **Never run on GitHub.** For the `e2e` job, the one thing checked ahead of time is that the demo API starts from an environment installed from `requirements.txt` alone. |
 | `dependabot.yml` | Validated against its published schema. |
 | Entra token validation against a real tenant | **Not tested.** |
 
 The first end-to-end proof of the containers is the `docker` job in CI, which builds the images,
 starts the stack and checks `/ready`, `/health`, `/api/v1/me`, the SPA fallback and the CSP header.
+The first proof that the browser suite also passes on Linux in Chromium is the `e2e` job.
 If you run Compose locally and something fails, that is more likely to be a defect in the container
 files than in the application, and a report is welcome.

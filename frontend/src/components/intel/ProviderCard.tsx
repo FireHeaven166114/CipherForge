@@ -43,12 +43,12 @@ function StrengthMeter({ signal }: { signal: number | null }) {
   return (
     <div>
       <div className="flex items-center gap-3">
-        <div className="w-28 shrink-0">
-          <BarMeter percent={signal * 100} fillClass="fill-cyan-500" />
+        <div className="w-28 min-w-0 shrink">
+          <BarMeter percent={signal * 100} fillClass="fill-cipher" />
         </div>
         <span className="tabular-nums">{formatStrength(signal)}</span>
       </div>
-      <p className="mt-0.5 text-xs text-slate-400">
+      <p className="mt-0.5 text-xs text-ink-300">
         0 to 1: how strongly this provider's data points to malicious activity. It is not a
         probability.
       </p>
@@ -144,7 +144,7 @@ function otxFacts(facts: OtxFacts): Fact[] {
                 <li key={`${pulse.id ?? pulse.name}:${index}`}>
                   {href ? <ExternalLink href={href}>{pulse.name}</ExternalLink> : pulse.name}
                   {updated ? (
-                    <span className="block text-xs text-slate-400">
+                    <span className="block text-xs text-ink-300">
                       Updated <DateTime value={updated} />
                     </span>
                   ) : null}
@@ -181,7 +181,11 @@ function otxFacts(facts: OtxFacts): Fact[] {
           <ul role="list" aria-label="ATT&CK techniques named by OTX pulses" className="flex flex-wrap gap-x-3 gap-y-1">
             {facts.attackIds.map((id) => {
               const href = attackTechniqueUrl(id);
-              return <li key={id}>{href ? <ExternalLink href={href}>{id}</ExternalLink> : id}</li>;
+              return (
+                <li key={id} className="min-w-0 max-w-full wrap-anywhere">
+                  {href ? <ExternalLink href={href}>{id}</ExternalLink> : id}
+                </li>
+              );
             })}
           </ul>
         ),
@@ -212,12 +216,12 @@ export default function ProviderCard({ provider }: { provider: ProviderView }) {
   return (
     <Card as="h3" title={provider.display_name} badge={badge}>
       <div className="space-y-3">
-        {provider.message ? <p className="text-amber-200">{provider.message}</p> : null}
+        {provider.message ? <p className="text-warn">{provider.message}</p> : null}
         {provider.status === "no_data" ? <p>{meta.explanation}</p> : null}
         <FactList facts={[...commonFacts(provider), ...specificFacts(provider)]} />
         <ChipList items={provider.tags} label={`Tags from ${provider.display_name}`} />
         {notes.length > 0 ? (
-          <ul role="list" className="list-disc space-y-1 pl-5 text-slate-300">
+          <ul role="list" className="list-disc space-y-1 pl-5 text-ink-200 marker:text-cipher">
             {notes.map((note, index) => (
               <li key={`${index}:${note}`}>{note}</li>
             ))}

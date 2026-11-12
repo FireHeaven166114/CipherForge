@@ -74,15 +74,18 @@ interface ErrorNoticeProps {
 export default function ErrorNotice({ error, onRetry }: ErrorNoticeProps) {
   const { title, hint } = explain(error);
   return (
-    <div role="alert" className="rounded-lg border border-red-700 bg-red-950 p-4 text-sm text-red-100">
-      <p className="flex items-center gap-2 font-semibold">
+    <div
+      role="alert"
+      className="rounded-[3px] border border-crit/60 bg-crit/10 p-4 text-sm text-ink-100 shadow-glow-crit"
+    >
+      <p className="flex items-center gap-2 font-semibold text-crit">
         <span aria-hidden="true">✕</span>
         {title}
       </p>
       <p className="mt-1">{error.message}</p>
-      {hint ? <p className="mt-1 text-red-200">{hint}</p> : null}
+      {hint ? <p className="mt-1 text-ink-200">{hint}</p> : null}
       {error.correlationId ? (
-        <p className="mt-2 text-xs text-red-200">Reference: {error.correlationId}</p>
+        <p className="mt-2 font-mono text-xs text-ink-300">Reference: {error.correlationId}</p>
       ) : null}
       {onRetry ? (
         <button type="button" onClick={onRetry} className={`${BUTTON} mt-3`}>

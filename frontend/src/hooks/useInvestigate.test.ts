@@ -56,6 +56,26 @@ describe("useInvestigate", () => {
     expect(result.current.state).toEqual({ status: "success", investigation: second });
   });
 
+  it("starts the lookup straight away when given an initial request, and only once", async () => {
+    const investigation = makeInvestigation();
+    const fetchMock = stubFetch(() => jsonResponse(investigation));
+
+    const { result, rerender } = renderHook(
+      ({ indicator }) => useInvestigate({ indicator, refresh: false }),
+      { initialProps: { indicator: "203.0.113.9" } },
+    );
+    expect(result.current.state).toEqual({ status: "loading", indicator: "203.0.113.9" });
+
+    await waitFor(() => expect(result.current.state.status).toBe("success"));
+    // The initial request is read once; changing it later does not start another lookup.
+    rerender({ indicator: "203.0.113.10" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      indicator: "203.0.113.9",
+      refresh: false,
+    });
+  });
+
   it("never mistakes an earlier result for a new request after reset", async () => {
     const first = makeInvestigation();
     let calls = 0;

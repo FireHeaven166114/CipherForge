@@ -1,16 +1,19 @@
 import type { ReactNode } from "react";
 
-import { isScoreAssessed } from "../../features/intel/classification";
+import { CLASSIFICATION_META, isScoreAssessed } from "../../features/intel/classification";
 import { formatPoints, plural } from "../../features/intel/format";
+import { buildWaterfall } from "../../features/intel/waterfall";
 import type { Score } from "../../types/intel";
 import Card from "../Card";
+import { LABEL } from "../styles";
+import ScoreTrack from "./ScoreTrack";
 
 const KNOWN_METHODOLOGY = "intel-risk-v1";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-slate-100">{title}</h3>
+      <h3 className={LABEL}>{title}</h3>
       <div className="mt-2">{children}</div>
     </div>
   );
@@ -18,7 +21,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Bullets({ items }: { items: readonly string[] }) {
   return (
-    <ul role="list" className="list-disc space-y-1 pl-5">
+    <ul role="list" className="list-disc space-y-1 pl-5 marker:text-cipher">
       {items.map((item, index) => (
         <li key={`${index}:${item}`}>{item}</li>
       ))}
@@ -35,37 +38,58 @@ function FactorTable({ score }: { score: Score }) {
       </p>
     );
   }
+  const { steps, end, limit } = buildWaterfall(score.factors.map((factor) => factor.points));
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <caption className="sr-only">Points that make up the score</caption>
-        <thead className="text-xs uppercase tracking-wide text-slate-400">
+        <thead className={LABEL}>
           <tr>
-            <th scope="col" className="pb-2 pr-4 font-medium">
+            <th scope="col" className="pb-2 pr-4 font-semibold">
               Factor
             </th>
-            <th scope="col" className="pb-2 text-right font-medium">
+            <th scope="col" className="pb-2 text-right font-semibold">
               Points
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800">
-          {score.factors.map((factor, index) => (
-            <tr key={`${factor.code}:${index}`}>
-              <th scope="row" className="py-2 pr-4 align-top font-medium text-slate-100">
-                {factor.label}
-                <span className="block text-xs font-normal text-slate-400">{factor.detail}</span>
-              </th>
-              <td className="py-2 text-right align-top tabular-nums">{formatPoints(factor.points)}</td>
-            </tr>
-          ))}
+        <tbody className="divide-y divide-ink-700/60">
+          {score.factors.map((factor, index) => {
+            const step = steps[index];
+            return (
+              <tr key={`${factor.code}:${index}`}>
+                <th scope="row" className="py-2.5 pr-4 align-top font-medium text-ink-50 wrap-anywhere">
+                  {factor.label}
+                  <span className="block text-xs font-normal text-ink-300">{factor.detail}</span>
+                  {step ? (
+                    <span className="mt-1.5 block">
+                      <ScoreTrack step={step} limit={limit} index={index} />
+                    </span>
+                  ) : null}
+                </th>
+                <td className="py-2.5 text-right align-top font-mono tabular-nums text-ink-50">
+                  {formatPoints(factor.points)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
-          <tr className="border-t border-slate-600">
-            <th scope="row" className="pr-4 pt-2 text-left font-semibold text-slate-100">
+          <tr className="border-t border-ink-500">
+            <th scope="row" className="pr-4 pt-2.5 text-left font-semibold text-ink-50">
               Score (out of 100)
+              <span className="mt-1.5 block">
+                <ScoreTrack
+                  step={{ from: 0, to: end, kind: "add" }}
+                  limit={limit}
+                  fillClass={CLASSIFICATION_META[score.classification].bar}
+                  index={score.factors.length}
+                />
+              </span>
             </th>
-            <td className="pt-2 text-right font-semibold tabular-nums text-slate-100">{score.score}</td>
+            <td className="pt-2.5 text-right align-top font-mono font-semibold tabular-nums text-ink-50">
+              {score.score}
+            </td>
           </tr>
         </tfoot>
       </table>
@@ -76,11 +100,11 @@ function FactorTable({ score }: { score: Score }) {
 /** The rules of intel-risk-v1, in words. Only shown for that methodology, so it cannot go stale. */
 function Methodology() {
   return (
-    <details className="rounded-md border border-slate-700 p-3">
-      <summary className="cursor-pointer rounded-sm font-medium text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+    <details className="rounded-[3px] border border-ink-700 bg-ink-900/50 p-3 open:border-cipher/40">
+      <summary className="cursor-pointer rounded-sm font-medium text-ink-50 marker:text-cipher">
         How scores are calculated ({KNOWN_METHODOLOGY})
       </summary>
-      <ul role="list" className="mt-3 list-disc space-y-1.5 pl-5">
+      <ul role="list" className="mt-3 list-disc space-y-1.5 pl-5 marker:text-cipher">
         <li>
           Each provider that answers can add up to 45 points: its evidence strength (0 to 1) times
           a recency weight.
@@ -118,7 +142,7 @@ function Methodology() {
 export default function ScorePanel({ score }: { score: Score }) {
   const assessed = isScoreAssessed(score);
   return (
-    <Card title="How the score was built">
+    <Card title="How the score was built" code="ANA">
       <div className="space-y-5">
         {assessed ? (
           <>
@@ -151,7 +175,7 @@ export default function ScorePanel({ score }: { score: Score }) {
         {score.recommended_actions.length > 0 ? (
           <Section title="Recommended next steps">
             <Bullets items={score.recommended_actions} />
-            <p className="mt-2 text-slate-400">
+            <p className="mt-2 text-ink-300">
               CipherForge only recommends. It never blocks, isolates or changes anything on its own.
             </p>
           </Section>
@@ -160,7 +184,7 @@ export default function ScorePanel({ score }: { score: Score }) {
         {score.methodology === KNOWN_METHODOLOGY ? (
           <Methodology />
         ) : (
-          <p className="text-slate-400">Scoring method: {score.methodology}</p>
+          <p className="text-ink-300">Scoring method: {score.methodology}</p>
         )}
       </div>
     </Card>

@@ -2,10 +2,12 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import ErrorNotice from "../components/ErrorNotice";
+import PageHeader from "../components/hud/PageHeader";
+import Panel from "../components/hud/Panel";
 import IndicatorTable from "../components/intel/IndicatorTable";
 import LoadingNote from "../components/LoadingNote";
 import Pagination from "../components/Pagination";
-import { BUTTON, FIELD, LINK } from "../components/styles";
+import { BUTTON, FIELD, LABEL, LINK } from "../components/styles";
 import { CLASSIFICATIONS_BY_SEVERITY, CLASSIFICATION_META } from "../features/intel/classification";
 import {
   MAX_PAGE,
@@ -35,10 +37,12 @@ const TYPE_OPTIONS: Option[] = [
 
 const CLASSIFICATION_OPTIONS: Option[] = [
   { value: "", label: "All classifications" },
+  { value: "high_risk", label: "High or critical" },
   ...CLASSIFICATIONS_BY_SEVERITY.map((classification) => ({
     value: classification,
     label: CLASSIFICATION_META[classification].label,
   })),
+  { value: "not_assessed", label: "Not assessed" },
 ];
 
 const SORT_OPTIONS: Option[] = [
@@ -59,15 +63,15 @@ function Select({
 }) {
   const id = useId();
   return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-200">
+    <div className="min-w-40 flex-1">
+      <label htmlFor={id} className={`${LABEL} block`}>
         {label}
       </label>
       <select
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`${FIELD} mt-1`}
+        className={`${FIELD} mt-1.5`}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -90,10 +94,10 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
         event.preventDefault();
         onSearch(draft);
       }}
-      className="flex items-end gap-2"
+      className="flex min-w-64 flex-[2] items-end gap-2"
     >
       <div className="min-w-0 flex-1">
-        <label htmlFor={id} className="block text-sm font-medium text-slate-200">
+        <label htmlFor={id} className={`${LABEL} block`}>
           Search
         </label>
         <input
@@ -105,7 +109,7 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
           autoComplete="off"
           spellCheck={false}
           placeholder="Part of an address, domain, URL or hash"
-          className={`${FIELD} mt-1`}
+          className={`${FIELD} mt-1.5 font-mono`}
         />
       </div>
       <button type="submit" className={BUTTON}>
@@ -138,20 +142,27 @@ export default function IndicatorsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Indicators</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Every indicator that has been investigated. Open one to see each provider&apos;s answer.
-        </p>
-      </div>
+      <PageHeader
+        code="MOD-03 · INDICATOR MATRIX"
+        title="Indicators"
+        description="Every indicator that has been investigated. Open one to see each provider's answer."
+      />
 
-      <div className="space-y-3">
-        <SearchBox
-          key={filters.q}
-          initial={filters.q}
-          onSearch={(text) => update({ q: text.trim() })}
-        />
-        <div className="flex flex-wrap items-end gap-3">
+      <Panel
+        title="Filters"
+        code="FLT"
+        actions={
+          <p role="status" className="font-mono text-xs text-cipher">
+            {total === null ? "" : `${total} ${total === 1 ? "indicator" : "indicators"} found.`}
+          </p>
+        }
+      >
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-4">
+          <SearchBox
+            key={filters.q}
+            initial={filters.q}
+            onSearch={(text) => update({ q: text.trim() })}
+          />
           <Select
             label="Type"
             value={filters.type}
@@ -178,32 +189,30 @@ export default function IndicatorsPage() {
             </button>
           ) : null}
         </div>
-      </div>
-
-      <p role="status" className="sr-only">
-        {total === null ? "" : `${total} ${total === 1 ? "indicator" : "indicators"} found.`}
-      </p>
+      </Panel>
 
       {state.status === "loading" ? <LoadingNote>Loading indicators…</LoadingNote> : null}
       {state.status === "error" ? <ErrorNotice error={state.error} onRetry={reload} /> : null}
 
       {state.status === "success" ? (
         state.data.items.length > 0 ? (
-          <div className="space-y-4">
+          <Panel title="Investigated indicators" code="IND" bodyClassName="p-0">
             <IndicatorTable
               indicators={state.data.items}
               caption={`Indicators, sorted by ${filters.sort === "risk" ? "highest risk" : "most recent check"}`}
             />
-            <Pagination
-              page={filters.page}
-              pageSize={PAGE_SIZE}
-              total={state.data.total}
-              maxPage={MAX_PAGE}
-              onPageChange={goToPage}
-            />
-          </div>
+            <div className="border-t border-ink-700/70 px-4 py-3">
+              <Pagination
+                page={filters.page}
+                pageSize={PAGE_SIZE}
+                total={state.data.total}
+                maxPage={MAX_PAGE}
+                onPageChange={goToPage}
+              />
+            </div>
+          </Panel>
         ) : (
-          <div className="rounded-lg border border-slate-800 bg-slate-900 p-5 text-sm text-slate-300">
+          <Panel bodyClassName="p-6">
             {state.data.total > 0 ? (
               <>
                 <p>This page has no results.</p>
@@ -226,7 +235,7 @@ export default function IndicatorsPage() {
                 </Link>
               </>
             )}
-          </div>
+          </Panel>
         )
       ) : null}
     </div>

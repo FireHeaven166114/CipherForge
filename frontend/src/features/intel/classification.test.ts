@@ -1,7 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import { makeIndicator, makeNotAssessed, makeScore } from "../../test/fixtures";
-import { isIndicatorAssessed, isScoreAssessed } from "./classification";
+import {
+  CLASSIFICATIONS_BY_SEVERITY,
+  classificationForScore,
+  isIndicatorAssessed,
+  isScoreAssessed,
+} from "./classification";
+
+describe("classificationForScore", () => {
+  it.each([
+    [0, "informational"],
+    [20, "informational"],
+    [21, "low"],
+    [40, "low"],
+    [41, "medium"],
+    [60, "medium"],
+    [61, "high"],
+    [80, "high"],
+    [81, "critical"],
+    [100, "critical"],
+  ])("puts a score of %i in the %s band", (score, expected) => {
+    expect(classificationForScore(score)).toBe(expected);
+  });
+
+  it("agrees with the severity order, most severe first", () => {
+    const scores = [95, 70, 50, 30, 5];
+    expect(scores.map(classificationForScore)).toEqual([...CLASSIFICATIONS_BY_SEVERITY]);
+  });
+});
 
 describe("isScoreAssessed", () => {
   it("is true when at least one provider answered", () => {

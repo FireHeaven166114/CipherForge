@@ -1,7 +1,6 @@
 import {
   CLASSIFICATIONS,
   INDICATOR_TYPES,
-  type Classification,
   type IndicatorQuery,
   type IndicatorSort,
   type IndicatorType,
@@ -17,11 +16,19 @@ export const MAX_SEARCH_LENGTH = 256;
 export interface IndicatorFilters {
   q: string;
   type: IndicatorType | "";
-  classification: Classification | "";
+  classification: RiskFilter | "";
   sort: IndicatorSort;
   /** 1-based. */
   page: number;
 }
+
+/**
+ * What the classification filter can hold: one band, High and Critical together, or "not
+ * assessed". These are the groups the overview counts, so each of its numbers opens exactly the
+ * indicators it counts.
+ */
+export const RISK_FILTERS = [...CLASSIFICATIONS, "high_risk", "not_assessed"] as const;
+export type RiskFilter = (typeof RISK_FILTERS)[number];
 
 export const DEFAULT_FILTERS: IndicatorFilters = {
   q: "",
@@ -41,7 +48,7 @@ export function readFilters(params: URLSearchParams): IndicatorFilters {
   return {
     q: (params.get("q") ?? "").trim().slice(0, MAX_SEARCH_LENGTH),
     type: pick(INDICATOR_TYPES, params.get("type")) ?? "",
-    classification: pick(CLASSIFICATIONS, params.get("classification")) ?? "",
+    classification: pick(RISK_FILTERS, params.get("classification")) ?? "",
     sort: pick(["recent", "risk"] as const, params.get("sort")) ?? DEFAULT_FILTERS.sort,
     page: Number.isInteger(page) && page >= 1 ? Math.min(page, MAX_PAGE) : 1,
   };
@@ -58,10 +65,33 @@ export function writeFilters(filters: IndicatorFilters): URLSearchParams {
   return params;
 }
 
+/** A link to the indicators list with the given filters applied, for drilling down from a chart. */
+export function indicatorsHref(filters: Partial<IndicatorFilters> = {}): string {
+  const query = writeFilters({ ...DEFAULT_FILTERS, ...filters }).toString();
+  return query === "" ? "/indicators" : `/indicators?${query}`;
+}
+
+/**
+ * The API's view of a risk filter. A band means assessed indicators in that band: an indicator no
+ * provider answered for also scores 0, but it is "not assessed", never "informational".
+ */
+function riskQuery(filter: RiskFilter | ""): Pick<IndicatorQuery, "classification" | "assessed"> {
+  switch (filter) {
+    case "":
+      return {};
+    case "not_assessed":
+      return { assessed: false };
+    case "high_risk":
+      return { classification: ["high", "critical"], assessed: true };
+    default:
+      return { classification: [filter], assessed: true };
+  }
+}
+
 export function toQuery(filters: IndicatorFilters): IndicatorQuery {
   return {
     type: filters.type || undefined,
-    classification: filters.classification || undefined,
+    ...riskQuery(filters.classification),
     q: filters.q || undefined,
     sort: filters.sort,
     limit: PAGE_SIZE,

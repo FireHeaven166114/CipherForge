@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Link, useParams } from "react-router";
 
 import ErrorNotice from "../components/ErrorNotice";
+import PageHeader from "../components/hud/PageHeader";
 import InvestigationView from "../components/intel/InvestigationView";
 import LoadingNote from "../components/LoadingNote";
 import { BUTTON, LINK } from "../components/styles";
@@ -15,7 +16,7 @@ const MAX_TITLE_VALUE = 60;
 
 function BackLink() {
   return (
-    <Link to="/indicators" className={LINK}>
+    <Link to="/indicators" className={`${LINK} inline-block text-sm`}>
       <span aria-hidden="true">← </span>All indicators
     </Link>
   );
@@ -24,10 +25,9 @@ function BackLink() {
 function NotFound({ title, message }: { title: string; message: string }) {
   useDocumentTitle(title);
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <BackLink />
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="text-slate-300">{message}</p>
+      <PageHeader code="ERR-404 · NO RECORD" title={title} description={message} />
     </div>
   );
 }
@@ -56,27 +56,25 @@ function IndicatorDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
+      <div className="space-y-4">
         <BackLink />
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Indicator details</h1>
-            <p className="mt-1 text-sm text-slate-400">
-              This is the stored record. Re-checking asks the configured providers again and updates
-              it.
-            </p>
-          </div>
-          {investigation ? (
-            <button
-              type="button"
-              disabled={rechecking}
-              onClick={() => recheck.run(investigation.indicator.indicator_value, true)}
-              className={BUTTON}
-            >
-              {rechecking ? "Re-checking…" : "Re-check with providers"}
-            </button>
-          ) : null}
-        </div>
+        <PageHeader
+          code="MOD-03 · INDICATOR DOSSIER"
+          title="Indicator details"
+          description="This is the stored record. Re-checking asks the configured providers again and updates it."
+          actions={
+            investigation ? (
+              <button
+                type="button"
+                aria-disabled={rechecking || undefined}
+                onClick={rechecking ? undefined : () => recheck.run(investigation.indicator.indicator_value, true)}
+                className={BUTTON}
+              >
+                {rechecking ? "Re-checking…" : "Re-check with providers"}
+              </button>
+            ) : undefined
+          }
+        />
       </div>
 
       <p role="status" className="sr-only">

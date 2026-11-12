@@ -2,8 +2,8 @@
 
 A STRIDE analysis of what exists today: the Phase 1 platform (the API, its identity and database layer,
 the nginx front end, the container stack and the build pipeline), the Phase 2 threat-intelligence
-backend (outbound provider calls, third-party data, the audit trail) and the Phase 3 dashboard that
-displays that data. It is a living document: each
+backend (outbound provider calls, third-party data, the audit trail) and the Phase 3 and 3b dashboard
+that displays that data. It is a living document: each
 new feature must extend it before it ships. **Vault in particular needs its own, separate threat
 model before any code is written.**
 
@@ -87,6 +87,10 @@ treated as untrusted data too: they are validated and bounded before use.
 | 34 | A crafted address makes the dashboard request an unintended API path (for example `/indicators/..%2F..%2Fhealth`) | Tampering | The detail route accepts only a UUID and sends no request otherwise; identifiers placed in a request are URL-encoded. | Mitigated |
 | 35 | The dashboard misleads the analyst: "nothing answered" read as "clean", or one indicator's result shown under another | Tampering (analyst decisions) | "Not assessed" is its own state with no score; each provider is shown separately with what is not known; requests are cancelled when the screen changes and the detail page is keyed by indicator. Component tests pin each behaviour. | Mitigated in the display; feed accuracy is row 29 |
 | 36 | What an analyst searched for leaks through the address bar, browser history or a `Referer` header | Information disclosure | `Referrer-Policy: no-referrer` and `noreferrer` links keep it from other sites. Only the Indicators search text is placed in the address, and what is typed on the Investigate page is not. History and shared links still show the search text. | Partly mitigated |
+| 37 | The console tells a third party who is using it: a font host, CDN or map tile server contacted by the page, or a cookie or `Referer` that travels with a request | Information disclosure | The fonts, the world map and the icons are bundled; the CSP allows only the console's own origin (and `data:` images); a browser test follows a whole session and checks every request went to that origin with no cookie and no `Referer`, and another checks that the built files name no host other than a short documented list. The only thing stored in the browser is the effects switch. | Mitigated |
+| 38 | The dashboard presents a provider-reported country as where an attacker is, or demo data as real data | Tampering (analyst decisions) | The map and the lists say "provider-reported country" and place a marker on a country's label point, not a place; a scope note says what the figures leave out; whenever any provider is simulated, a banner says so on every screen. | Mitigated in the display; feed accuracy is row 29 |
+| 39 | Repeated overview requests exhaust the server: the overview aggregates stored history on every request, and every open dashboard refreshes it each minute | DoS | The route needs the analyst role, is read-only, and scans a bounded amount (the newest 2,000 provider answers, and up to 20,000 lookups and 20,000 new indicators from the last 14 days), reporting when a bound cut a figure short. There is no per-user limit on reads. | Partly mitigated |
+| 40 | The demo server (development sign-in, simulated providers) is run against real data or exposed to a network | Elevation, Tampering | It sets `ENVIRONMENT=development` and `AUTH_MODE=dev` (which production refuses), accepts only a `.db` file inside `backend/.demo/`, makes no outbound calls, is excluded from the container image and is imported by nothing in `app/`. It listens on loopback unless told otherwise. | Mitigated by construction; never bind it to a network |
 
 ## Residual risks and deliberate limits
 
@@ -99,8 +103,9 @@ treated as untrusted data too: they are validated and bounded before use.
   smoke test is the first real run (see [deployment.md](deployment.md#verification-status)).
 - The provider adapters were tested against recorded responses only, never the live services (see
   [threat-intelligence.md](threat-intelligence.md#verification-status)).
-- The dashboard was checked in a real browser against a stand-in for nginx's headers, and with real
-  provider evidence only through example data (see
+- The dashboard was checked in a real browser (Microsoft Edge on Windows, 583 automated tests) against
+  a stand-in for nginx's headers, and with provider evidence only through simulated and invented
+  answers, never the live services (see
   [threat-intelligence.md](threat-intelligence.md#verification-status)).
 
 ## Threat-intelligence data (Phase 2)
@@ -110,9 +115,10 @@ design, the scoring method and the provider behaviour are in
 [threat-intelligence.md](threat-intelligence.md). Later phases that add internal telemetry or any
 automated response must extend this model first.
 
-## Dashboard (Phase 3)
+## Dashboard (Phases 3 and 3b)
 
-Phase 3 adds a browser client that displays the Phase 2 data, including text written by third
-parties. Rows 11, 25 and 33 to 36 analyse it, and the controls are listed in
-[security.md](security.md#frontend-controls-phase-3). It adds no new endpoints and no new
-privileges: every call goes through the same authorised API routes.
+Phases 3 and 3b add a browser client that displays the Phase 2 data, including text written by third
+parties. Rows 11, 25 and 33 to 40 analyse it, and the controls are listed in
+[security.md](security.md#frontend-controls-phases-3-and-3b). Phase 3b added one read-only endpoint
+(`GET /api/v1/intel/overview`, which needs the same role as the rest) and no new privileges: every
+call goes through the same authorised API routes.

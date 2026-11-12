@@ -33,12 +33,20 @@ INVESTIGATE = "/api/v1/intel/investigate"
 INDICATORS = "/api/v1/intel/indicators"
 INDICATOR = INDICATORS + "/{indicator_id}"
 STATS = "/api/v1/intel/stats"
-ROUTES = [("POST", INVESTIGATE), ("GET", INDICATOR), ("GET", INDICATORS), ("GET", STATS)]
+OVERVIEW = "/api/v1/intel/overview"
+ROUTES = [
+    ("POST", INVESTIGATE),
+    ("GET", INDICATOR),
+    ("GET", INDICATORS),
+    ("GET", STATS),
+    ("GET", OVERVIEW),
+]
 
 IP = "185.220.101.45"
 TARGET = f"ipv4:{IP}"
 DOMAIN = "evil.example.com"
 QUIET_DOMAIN = "quiet.example.org"
+UNANSWERED = "unanswered.example.net"
 SHA256 = hashlib.sha256(b"cipherforge").hexdigest()
 CLIENT_ADDRESS = "203.0.113.7"
 ANALYST = "SecurityAnalyst"
@@ -673,6 +681,38 @@ def test_the_list_filters_combine(seeded: tuple[Api, dict[str, str]]) -> None:
     assert values(api.get(INDICATORS, type="ipv6")) == []
 
 
+def test_a_classification_can_be_repeated_to_match_several_bands(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, _ = seeded
+
+    assert values(api.get(INDICATORS, classification=["high", "medium"])) == [DOMAIN, IP]
+    assert values(api.get(INDICATORS, classification=["high", "high"])) == [IP]
+    assert values(api.get(INDICATORS, classification=["high", "medium"], type="domain")) == [DOMAIN]
+
+
+def test_the_list_tells_indicators_a_provider_answered_for_from_those_none_did(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, _ = seeded
+    api.otx.answers[f"domain:{UNANSWERED}"] = failure(ProviderStatus.ERROR, "OTX failed.")
+    assert api.investigate(UNANSWERED).status_code == 200
+
+    items = api.get(INDICATORS).json()["items"]
+    unanswered = [item["indicator_value"] for item in items if item["confidence"] == 0]
+    answered = [item["indicator_value"] for item in items if item["confidence"] > 0]
+    assert unanswered == [UNANSWERED], "the data must really hold one unassessed indicator"
+
+    assert values(api.get(INDICATORS, assessed="false")) == unanswered
+    assert values(api.get(INDICATORS, assessed="true")) == answered
+    # It scores 0, which is "informational" by score, but nothing was assessed.
+    assert UNANSWERED in values(api.get(INDICATORS, classification="informational"))
+    informational = api.get(INDICATORS, classification="informational", assessed="true")
+    assert UNANSWERED not in values(informational)
+    assert values(api.get(INDICATORS, type="domain", assessed="false")) == unanswered
+    assert values(api.get(INDICATORS, type="sha256", assessed="false")) == []
+
+
 def test_list_pages_are_complete_and_do_not_overlap(seeded: tuple[Api, dict[str, str]]) -> None:
     api, _ = seeded
     everything = values(api.get(INDICATORS))
@@ -695,6 +735,9 @@ BAD_QUERIES = {
     "offset-too-big": {"offset": 10_001},
     "unknown-type": {"type": "bogus"},
     "unknown-classification": {"classification": "Severe"},
+    "one-unknown-among-valid-classifications": {"classification": ["high", "Severe"]},
+    "too-many-classifications": {"classification": ["low"] * 6},
+    "unknown-assessed": {"assessed": "maybe"},
     "unknown-sort": {"sort": "random"},
     "long-search": {"q": "a" * 257},
 }
@@ -760,12 +803,14 @@ def test_stats_summarise_the_stored_indicators(seeded: tuple[Api, dict[str, str]
                 "display_name": "AbuseIPDB",
                 "configured": True,
                 "supported_types": ["ipv4", "ipv6"],
+                "simulated": False,
             },
             {
                 "name": "otx",
                 "display_name": "AlienVault OTX",
                 "configured": True,
                 "supported_types": ["domain", "ipv4", "ipv6", "sha256", "url"],
+                "simulated": False,
             },
         ],
     }
@@ -778,6 +823,56 @@ def test_stats_of_an_empty_database_are_zeros(api: Api) -> None:
     assert body["lookups_last_24h"] == 0
     assert set(body["by_classification"].values()) == {0}
     assert set(body["by_type"].values()) == {0}
+
+
+def test_the_overview_summarises_the_stored_data(seeded: tuple[Api, dict[str, str]]) -> None:
+    api, ids = seeded
+    api.investigate("not an indicator")  # a rejected input is not a lookup
+
+    response = api.get(OVERVIEW)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kpis"]["total_indicators"] == 4
+    assert body["kpis"]["lookups_24h"] == 4
+    assert body["kpis"]["not_assessed_indicators"] == 0
+    assert body["by_classification"] == {
+        "informational": 2,
+        "low": 0,
+        "medium": 1,
+        "high": 1,
+        "critical": 0,
+        "not_assessed": 0,
+    }
+    assert [row["indicator_type"] for row in body["matrix"]] == [
+        "ipv4",
+        "ipv6",
+        "domain",
+        "url",
+        "sha256",
+    ]
+    assert [item["indicator_id"] for item in body["top_risk"]][:2] == [ids["ip"], ids["domain"]]
+    assert [item["indicator_id"] for item in body["recent"]] == [
+        ids["hash"],
+        ids["quiet"],
+        ids["domain"],
+        ids["ip"],
+    ]
+    assert len(body["series"]) == 14
+    assert sum(point["lookups"] for point in body["series"]) == 4
+    assert [provider["simulated"] for provider in body["providers"]] == [False, False]
+
+
+def test_the_overview_of_an_empty_database_is_complete_and_zeroed(api: Api) -> None:
+    body = api.get(OVERVIEW).json()
+
+    assert set(body["kpis"].values()) == {0}
+    assert len(body["series"]) == 14
+    assert [len(row["hours"]) for row in body["activity"]] == [24] * 7
+    assert len(body["matrix"]) == 5
+    for facet in ("countries", "malware_families", "attack_techniques", "tags"):
+        assert body[facet] == []
+    assert body["top_risk"] == [] and body["recent"] == []
 
 
 # --- Cross-cutting guarantees ------------------------------------------------------------------
@@ -799,9 +894,10 @@ def test_no_endpoint_returns_a_provider_key(build_api: ApiFactory, clock: Clock)
         api.get(f"{INDICATORS}/{uuid.uuid4()}"),
         api.get(INDICATORS),
         api.get(STATS),
+        api.get(OVERVIEW),
     ]
 
-    assert [response.status_code for response in responses] == [200, 422, 200, 404, 200, 200]
+    assert [response.status_code for response in responses] == [200, 422, 200, 404, 200, 200, 200]
     for response in responses:
         assert secret not in response.text
     stored = json.dumps([(row.details, row.target) for row in api.audit])
@@ -815,11 +911,12 @@ def test_responses_are_never_cacheable_or_sniffable(seeded: tuple[Api, dict[str,
         api.get(f"{INDICATORS}/{ids['ip']}"),
         api.get(INDICATORS),
         api.get(STATS),
+        api.get(OVERVIEW),
         api.get(f"{INDICATORS}/{uuid.uuid4()}"),
         api.investigate(IP, headers={}),
     ]
 
-    assert [response.status_code for response in responses] == [200, 200, 200, 200, 404, 401]
+    assert [response.status_code for response in responses] == [200, 200, 200, 200, 200, 404, 401]
     for response in responses:
         assert response.headers["Cache-Control"] == "no-store"
         assert response.headers["X-Content-Type-Options"] == "nosniff"

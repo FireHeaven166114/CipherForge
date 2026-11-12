@@ -1,7 +1,7 @@
 """Request and response models for the threat-intelligence API."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -112,6 +112,8 @@ class ProviderInfo(BaseModel):
     # Whether an API key is set. The key itself is never returned.
     configured: bool
     supported_types: list[IndicatorType]
+    # True only for the dev-only demo adapters (backend/devtools), which return invented answers.
+    simulated: bool = False
 
 
 class StatsResponse(BaseModel):
@@ -120,3 +122,86 @@ class StatsResponse(BaseModel):
     by_type: dict[str, int]
     lookups_last_24h: int
     providers: list[ProviderInfo]
+
+
+class SampleIndicator(BaseModel):
+    """A short reference to a stored indicator, used to drill into a dashboard figure."""
+
+    indicator_id: uuid.UUID
+    indicator_type: IndicatorType
+    indicator_value: str
+    risk_score: int
+    classification: Classification
+
+
+class FacetEntry(BaseModel):
+    """One value of a provider-reported attribute (country, malware family, ...)."""
+
+    key: str
+    # Distinct indicators whose latest provider answer carries this value.
+    count: int
+    max_risk: int
+    samples: list[SampleIndicator]
+
+
+class OverviewKpis(BaseModel):
+    total_indicators: int
+    new_indicators_24h: int
+    new_indicators_prev_24h: int
+    lookups_24h: int
+    lookups_prev_24h: int
+    # High and Critical, among indicators that at least one provider answered for.
+    high_risk_indicators: int
+    critical_indicators: int
+    # No provider answered: neither "clean" nor "risky".
+    not_assessed_indicators: int
+
+
+class DayPoint(BaseModel):
+    day: date
+    lookups: int
+    high_risk_lookups: int
+    new_indicators: int
+
+
+class ActivityRow(BaseModel):
+    day: date
+    # Completed lookups per UTC hour of the day (24 entries).
+    hours: list[int]
+
+
+class MatrixRow(BaseModel):
+    indicator_type: IndicatorType
+    # Keyed by classification value plus "not_assessed".
+    counts: dict[str, int]
+
+
+class OverviewScope(BaseModel):
+    """How much data the figures were computed from, so the dashboard can say so honestly."""
+
+    series_days: int
+    activity_days: int
+    lookups_scanned: int
+    lookups_truncated: bool
+    answers_scanned: int
+    answers_truncated: bool
+
+
+class OverviewResponse(BaseModel):
+    generated_at: datetime
+    kpis: OverviewKpis
+    # Assessed indicators by band, plus "not_assessed".
+    by_classification: dict[str, int]
+    by_type: dict[str, int]
+    matrix: list[MatrixRow]
+    series: list[DayPoint]
+    activity: list[ActivityRow]
+    # Provider-reported registration country of IP addresses. Not where an attacker is.
+    countries: list[FacetEntry]
+    malware_families: list[FacetEntry]
+    attack_techniques: list[FacetEntry]
+    tags: list[FacetEntry]
+    top_risk: list[IndicatorOut]
+    recent: list[IndicatorOut]
+    providers: list[ProviderInfo]
+    scope: OverviewScope

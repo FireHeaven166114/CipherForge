@@ -9,6 +9,8 @@ htmlcov/
 .env
 .env.*
 tests/
+devtools/
+.demo/
 requirements-dev.txt
 Dockerfile
 .dockerignore
