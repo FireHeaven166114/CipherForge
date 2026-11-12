@@ -39,8 +39,8 @@ function DrawerBody({ focus, onClose }: { focus: Focus; onClose: () => void }) {
   const band = classificationForScore(entry.max_risk);
 
   return (
-    <div className="hud-panel flex min-h-full flex-col border-l border-cipher/40 bg-ink-950/95">
-      <header className="flex items-start justify-between gap-3 border-b border-ink-700 p-4">
+    <div className="hud-panel flex min-h-full flex-col rounded-l-ui border-l border-cipher/40 bg-ink-950/95">
+      <header className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
         <div className="min-w-0">
           <p className={LABEL}>{KIND_LABELS[kind]}</p>
           <h2 className="mt-1 break-words text-xl font-semibold text-ink-50">{displayName(focus)}</h2>
@@ -53,13 +53,13 @@ function DrawerBody({ focus, onClose }: { focus: Focus; onClose: () => void }) {
 
       <div className="space-y-5 p-4">
         <dl className="grid grid-cols-2 gap-3">
-          <div className="rounded-[3px] border border-ink-700 bg-ink-900/60 p-3">
+          <div className="rounded-ui border border-white/10 bg-ink-900/60 p-3">
             <dt className={LABEL}>Indicators</dt>
             <dd className="mt-1 text-2xl font-semibold text-ink-50">
               <Count value={entry.count} className="font-mono" />
             </dd>
           </div>
-          <div className="rounded-[3px] border border-ink-700 bg-ink-900/60 p-3">
+          <div className="rounded-ui border border-white/10 bg-ink-900/60 p-3">
             <dt className={LABEL}>Highest risk</dt>
             <dd className="mt-1.5 flex flex-wrap items-center gap-2">
               <ClassificationBadge classification={band} />
@@ -86,7 +86,7 @@ function DrawerBody({ focus, onClose }: { focus: Focus; onClose: () => void }) {
               {entry.samples.map((sample) => (
                 <li
                   key={sample.indicator_id}
-                  className="flex items-center justify-between gap-3 rounded-[3px] border border-ink-700 bg-ink-900/60 p-3"
+                  className="flex items-center justify-between gap-3 rounded-ui border border-white/10 bg-ink-900/60 p-3"
                 >
                   <div className="min-w-0">
                     <Link

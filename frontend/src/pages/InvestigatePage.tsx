@@ -38,7 +38,7 @@ const EXAMPLES: readonly Example[] = [
 ];
 
 const CHIP =
-  "inline-flex items-center gap-1.5 rounded-[3px] border border-ink-600 bg-ink-900/60 px-2.5 py-1 text-xs font-medium text-ink-100 transition hover:border-cipher/60 hover:bg-ink-800 hover:text-ink-50";
+  "cf-glow inline-flex items-center gap-1.5 rounded-chip border border-white/10 bg-ink-900/60 px-2.5 py-1 text-xs font-medium text-ink-100 transition hover:border-cipher/50 hover:bg-ink-800 hover:text-ink-50";
 
 function describeResult(investigation: Investigation): string {
   const { indicator, score } = investigation;
@@ -126,7 +126,7 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
             <label htmlFor={id} className={`${LABEL} block`}>
               Indicator
             </label>
-            <div className="mt-2 flex items-center rounded-[3px] border border-ink-600 bg-void/70 transition focus-within:border-cipher focus-within:shadow-glow">
+            <div className="mt-2 flex items-center rounded-ui border border-ink-500 bg-void/70 transition focus-within:border-cipher focus-within:shadow-glow">
               <span aria-hidden="true" className="select-none pl-3 font-mono text-lg text-cipher">
                 ❯
               </span>
@@ -146,7 +146,7 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
                 className="min-w-0 flex-1 bg-transparent px-3 py-3 font-mono text-base text-ink-50 outline-hidden placeholder:text-ink-300"
               />
               {guess !== null ? (
-                <span className="mr-3 shrink-0 rounded-[2px] border border-cipher/40 bg-cipher/10 px-1.5 py-0.5 font-mono text-[0.7rem] tracking-wide text-cipher">
+                <span className="mr-3 shrink-0 rounded-chip border border-cipher/40 bg-cipher/10 px-1.5 py-0.5 font-mono text-[0.7rem] tracking-wide text-cipher">
                   <span className="sr-only">Looks like </span>
                   {INDICATOR_TYPE_LABELS[guess]}
                 </span>
@@ -185,7 +185,7 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
               type="checkbox"
               checked={refresh}
               onChange={(event) => setRefresh(event.target.checked)}
-              className="mt-0.5 size-4 shrink-0 rounded-[2px] accent-cipher"
+              className="mt-0.5 size-4 shrink-0 rounded-sm accent-cipher"
             />
             <span>
               Ask the providers again, even if a stored answer is recent
@@ -196,7 +196,7 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
             </span>
           </label>
 
-          <p className="rounded-[3px] border border-warn/40 bg-warn/5 p-3 text-xs text-ink-200">
+          <p className="rounded-ui border border-warn/40 bg-warn/5 p-3 text-xs text-ink-200">
             <span className="font-semibold text-warn">Before you send: </span>
             Investigating sends the indicator to each configured threat-intelligence provider, which
             is outside your organisation. Do not submit anything you are not allowed to share, such as
@@ -219,7 +219,10 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
 
       {state.status === "success" ? (
         <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[3px] border border-ink-700 bg-ink-900/50 px-4 py-3">
+          <div
+            data-reveal
+            className="flex flex-wrap items-center justify-between gap-3 rounded-ui border border-white/10 bg-ink-900/50 px-4 py-3"
+          >
             <p className="flex items-center gap-2 text-sm text-ink-200">
               <StatusLed tone="ok" />
               This result is saved. You can return to it from the Indicators page.

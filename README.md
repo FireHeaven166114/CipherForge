@@ -19,6 +19,7 @@ The project is built in vertical slices, each one tested and committed before th
 | 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against recorded responses only, see [threat-intelligence.md](docs/threat-intelligence.md#verification-status) |
 | 3 | SOC dashboard: investigation view, IOC table and search, charts | **Done** (React dashboard for the Phase 2 API). Works against `AUTH_MODE=dev` only: there is no browser sign-in yet |
 | 3b | Command deck: a redesigned futuristic UI, the `/overview` aggregates, a demo mode with simulated providers, and an end-to-end browser test suite | **Done.** Tested against simulated providers only, see [Testing the dashboard](#testing-the-dashboard) |
+| 3c | Aurora Forge: every screen restyled as spectral glass over a layered, animated background, with a light that follows the pointer, a sliding navigation lamp and choreographed entrances, built on anime.js | **Done.** Visual only: the routes, API calls, wording and behaviour are the same as in 3b. See [Phase 3c](#what-works-today) and [Testing the dashboard](#testing-the-dashboard) |
 | 4-12 | Network sensor, detection, correlation, mini-SIEM, cases, Vault, integrations, Azure, DevSecOps | Not started |
 
 The roadmap follows the project specification; see [docs/architecture.md](docs/architecture.md) for
@@ -93,8 +94,9 @@ workbench, and given one aggregate endpoint to draw from:
   ones not built yet marked **Planned**. It refreshes itself every minute.
 - **Keyboard first.** `/` or `Ctrl K` opens a command palette (go to a page, investigate or search
   for what you typed); `G` then `O`, `I`, `L` or `S` jumps to a page.
-- **Effects you can switch off.** An animated backdrop, numbers that count up and charts that draw
-  themselves. The switch is in the header, and they stay off when the system asks for reduced motion.
+- **Effects you can switch off.** An animated background, a light that follows the pointer, numbers
+  that count up and charts that draw themselves (Phase 3c made them richer). The switch is in the
+  header, and they stay off when the system asks for reduced motion.
   Nothing depends on them: every figure also exists as text.
 - **Honest by construction.** Large counts are shortened with the exact value kept in tooltips and for
   screen readers, "Not assessed" is its own group, the map says it shows the country a provider
@@ -105,6 +107,39 @@ workbench, and given one aggregate endpoint to draw from:
   requests, sets no cookies and stores nothing in the browser except the effects switch.
 - **Tested end to end** in a real browser, from the form to the record, the list and the totals; see
   [Testing the dashboard](#testing-the-dashboard).
+
+**Phase 3c: Aurora Forge**
+
+Every screen was restyled and given a motion layer, and nothing was added to what it does: the same
+screens, routes, API calls, wording, roles and shortcuts, and the Phase 3b browser suite is the
+regression net that proves it. (The one existing spec that changed is the contrast audit: it now
+measures against the new, lighter glass colour and hides the new decorative layers.)
+
+- **Spectral glass.** Panels are translucent glass with a cyan, violet and magenta edge, headings
+  carry a gradient, and badges and chips sit on solid plates so their text keeps its contrast
+  whatever the background is doing.
+- **A layered, living background.** Aurora orbs drift and lean away from the pointer, a perspective
+  grid slides toward you, 18 to 72 dots drift, link up and are pushed aside by the pointer (a 2D
+  canvas at 30 frames a second), and a soft light follows the cursor, all under film grain and a
+  vignette.
+- **Glass that catches the light.** Panels and buttons near the pointer light up where it is.
+- **A navigation lamp.** A lit pill glides to the page you open, on the side rail and on the phone's
+  bottom bar, and goes out on a page that has no link.
+- **Entrances.** Panels, tiles and page headers arrive in a short staggered wave, headline numbers
+  count up and headings decode letter by letter. What a screen reader reads never changes while
+  this happens, and a finished element keeps no leftover styles.
+- **Still optional.** All of it is behind the header's Effects switch, stays off when the system asks
+  for reduced motion, and the pointer effects are skipped on touch screens.
+- **Built on [anime.js](https://animejs.com)** (MIT, version 4.5.0, pinned, no dependencies of its
+  own) with CSS and a 2D canvas: no WebGL, no `eval` and no inline styles, so the Content Security
+  Policy is unchanged. See
+  [docs/architecture.md](docs/architecture.md#aurora-forge-and-the-motion-layer).
+- **Where the ideas came from.** The spotlight cards, the "tubelight" navigation bar and the
+  layered pointer-reactive background follow patterns seen on [21st.dev](https://21st.dev) and
+  [GetLayers](https://getlayers.ai). No component, prompt or code from either was copied: 21st.dev's
+  installer needs a signed-in membership and its components belong to their authors, and GetLayers'
+  terms forbid redistributing its prompts, so everything here was written for this project. See
+  [Credits](#credits).
 
 ### Not implemented yet
 
@@ -256,8 +291,9 @@ npx playwright show-report                            # HTML report; failures ke
   `chrome`) to use another installed browser, or `CI=1` to use the Chromium that
   `npx playwright install --with-deps chromium` downloads, as the CI job does. `E2E_PYTHON` names
   the Python that runs the API (default: `backend/.venv`, then `python` on the PATH).
-- The specs share one seeded database and run one after another. A complete run took about 18 minutes
-  on a laptop, so run the spec you are working on, and the whole suite before you commit.
+- The specs share one seeded database and run one after another. A complete run of the 596 tests took
+  about 37 minutes on a laptop (the 583 tests before Phase 3c took about 18), so run the spec you
+  are working on, and the whole suite before you commit.
 
 | Spec | What it proves |
 | --- | --- |
@@ -268,6 +304,7 @@ npx playwright show-report                            # HTML report; failures ke
 | `status` | A healthy API, a degraded one, an unreachable one, and recovery |
 | `journey` | One story across screens: investigate a new value, open its record, find it in the list, see the totals move by exactly what happened |
 | `a11y` | axe-core on every screen in many states (loading, empty, failing, drawer and palette open), with motion reduced, on a phone and with the effects on, plus a text-contrast audit against the lightest glass |
+| `motion` | The Phase 3c layers with the effects on: the canvas is painted and moving, the lamp sits on the open page's link (to the sub-pixel, on a phone as well) and goes out on a page with none, the switch removes every layer and brings it back without replaying the entrance, the pointer light follows the mouse and not a finger, entrances leave no styles behind, a heading is read out unchanged while it decodes, and every screen runs with no console message or policy violation and no sideways scroll |
 | `responsive` | 320 to 1440 px wide, desktop at 200% zoom, and text enlarged to 200%: nothing overflows, is clipped or overlaps |
 | `security` | The real response headers, and the browser itself blocking 20 kinds of injected content (inline and `javascript:` code, `data:` and `blob:` scripts, a `<base>` tag, scripts, styles, frames, forms, sockets and beacons to other sites) |
 | `untrusted-data` | Hostile names, values and links in provider data are shown as text and never run or followed |
@@ -284,8 +321,13 @@ What a green run does **not** show:
   values from the real `nginx.conf`: the file is checked, nginx is not. The container images were
   not built either.
 - Automated checks find only part of the accessibility problems. No screen reader or other assistive
-  technology was used, and the contrast audit measures chart text against the flat glass colour, not
-  against what the animated backdrop shows through it.
+  technology was used, and the suite's contrast audit measures chart text against the flat glass
+  colour, not against what the animated background shows through it. A one-off script that measured
+  every text run on every screen against the live, moving background (phone and desktop) found no
+  failure, but that script is not part of the repository.
+- **Nobody has judged the look.** The checks measure contrast, layout, motion state and a quiet
+  console. They cannot say whether the design is attractive or whether the motion feels right, and
+  it has not been tuned on slow devices (switch the effects off there).
 - It was run in Edge on Windows. Firefox and Safari were not tried, and the CI job that runs it on
   Chromium has not run yet.
 
@@ -389,6 +431,17 @@ label point per country from the 1:50m country data. The generated files are com
 (`frontend/src/features/overview/worldMask.ts` and `countryCentroids.ts`), so building the app and
 loading the page never need the network. To change them, run
 `node scripts/build-world-data.mjs` from `frontend/`.
+
+## Credits
+
+- **[anime.js](https://animejs.com)** by Julian Garnier (MIT) animates the interface (version 4.5.0,
+  pinned; only the parts the app uses end up in the build).
+- **[21st.dev](https://21st.dev) and [GetLayers](https://getlayers.ai)** were design references for
+  Phase 3c: a spotlight card, a "tubelight" navigation bar and layered, pointer-reactive backgrounds
+  are general ideas both show. No component, prompt or source from either is in this repository.
+- **Fonts** (Oxanium and JetBrains Mono, SIL Open Font License) come from the `@fontsource` packages
+  and are bundled, never fetched from a font host.
+- **Map data**: [Natural Earth](https://www.naturalearthdata.com/), see above.
 
 ## Licence
 

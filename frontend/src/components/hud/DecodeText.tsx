@@ -1,70 +1,65 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
-import { useEffects } from "../../effects/useEffects";
+import { animate, scrambleText } from "../../motion/anime";
+import { useMotion } from "../../motion/useMotion";
 
-const GLYPHS = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&*+<>/";
-const FRAME_MS = 38;
-const MAX_TOTAL_MS = 650;
+/** The characters the text flickers through on its way to the real thing. */
+const GLYPHS = "A-Z0-9#%&*+<>/";
+/** Longer text is not worth decoding: it would take too long and read as noise. */
+const MAX_LENGTH = 160;
+const MIN_MS = 380;
+const MAX_MS = 800;
+const MS_PER_CHARACTER = 28;
 
 function placeholderFor(text: string): string {
   return text.replace(/\S/g, "·");
 }
 
-interface Progress {
-  text: string;
-  value: string;
-}
-
 /**
- * Text that resolves out of scrambled characters when visual effects are on. The real text is
- * always what assistive technology reads; the scramble is hidden from it.
+ * Text that resolves out of scrambled characters when visual effects are on, using anime.js's
+ * scrambleText. The real text is always what assistive technology reads; the scramble is hidden
+ * from it. Once it has settled, what is left is the plain text, exactly as it renders with
+ * effects off.
  */
 export default function DecodeText({ text, className }: { text: string; className?: string }) {
-  const { enabled } = useEffects();
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const motion = useMotion();
+  const scrambled = useRef<HTMLSpanElement>(null);
+  /** The text that has finished decoding, so a re-render does not decode it again. */
+  const [settled, setSettled] = useState<string | null>(null);
+  const decoding = motion && text.length <= MAX_LENGTH && settled !== text;
 
-  useEffect(() => {
-    if (!enabled) return;
-    const characters = Array.from(text);
-    const perCharacter = Math.min(48, MAX_TOTAL_MS / Math.max(characters.length, 1));
-    let start: number | undefined;
-    let lastDraw = 0;
-    let frame = 0;
-
-    const tick = (now: number) => {
-      start ??= now;
-      const resolved = Math.floor((now - start) / perCharacter);
-      if (resolved >= characters.length) {
-        setProgress({ text, value: text });
-        return;
-      }
-      if (now - lastDraw >= FRAME_MS) {
-        lastDraw = now;
-        const value = characters
-          .map((character, index) =>
-            index < resolved || /\s/.test(character)
-              ? character
-              : (GLYPHS[Math.floor(Math.random() * GLYPHS.length)] ?? character),
-          )
-          .join("");
-        setProgress({ text, value });
-      }
-      frame = requestAnimationFrame(tick);
+  useLayoutEffect(() => {
+    const element = scrambled.current;
+    if (!decoding || element === null) return;
+    element.textContent = placeholderFor(text);
+    const scramble = animate(element, {
+      textContent: scrambleText({
+        text,
+        chars: GLYPHS,
+        duration: Math.min(MAX_MS, Math.max(MIN_MS, text.length * MS_PER_CHARACTER)),
+        settleDuration: 240,
+      }),
+      onComplete: () => setSettled(text),
+    });
+    return () => {
+      scramble.cancel();
     };
+  }, [decoding, text]);
 
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [enabled, text]);
-
-  if (!enabled) return <span className={className}>{text}</span>;
-  const shown = progress !== null && progress.text === text ? progress.value : placeholderFor(text);
-  if (shown === text) return <span className={className}>{text}</span>;
+  if (!decoding) {
+    return (
+      <span key="plain" className={className}>
+        {text}
+      </span>
+    );
+  }
   return (
     <>
-      <span aria-hidden="true" className={className}>
-        {shown}
+      {/* React never renders children into this one: the scramble writes into it directly. */}
+      <span key="scrambling" ref={scrambled} aria-hidden="true" className={className} />
+      <span key="reading" className="sr-only">
+        {text}
       </span>
-      <span className="sr-only">{text}</span>
     </>
   );
 }

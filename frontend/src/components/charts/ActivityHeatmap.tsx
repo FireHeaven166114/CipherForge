@@ -78,7 +78,7 @@ export default function ActivityHeatmap({ rows }: ActivityHeatmapProps) {
         <span className="flex items-center gap-1.5">
           fewer
           {OPACITY.map((opacity) => (
-            <span key={opacity} className="size-2.5 rounded-[2px] bg-cipher" style={{ opacity }} />
+            <span key={opacity} className="size-2.5 rounded-sm bg-cipher" style={{ opacity }} />
           ))}
           more
         </span>

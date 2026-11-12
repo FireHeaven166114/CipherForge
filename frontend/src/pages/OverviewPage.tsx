@@ -40,7 +40,7 @@ function SkeletonTiles() {
   return (
     <div aria-hidden="true" className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @deck:grid-cols-5">
       {[0, 1, 2, 3, 4].map((tile) => (
-        <div key={tile} className="hud-panel h-32 animate-pulse rounded-[3px]" />
+        <div key={tile} className="hud-panel h-32 animate-pulse rounded-ui" />
       ))}
     </div>
   );
@@ -339,7 +339,7 @@ export default function OverviewPage() {
       ) : null}
       {state.status === "error" ? <ErrorNotice error={state.error} onRetry={refresh} /> : null}
       {ready !== null && ready.refreshError !== null ? (
-        <div role="alert" className="rounded-[3px] border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
+        <div role="alert" className="rounded-ui border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
           <span aria-hidden="true">▲ </span>
           The overview could not be refreshed. The figures below are from {refreshedAt}.
         </div>

@@ -28,9 +28,9 @@ async function expectAccessible(page: Page, what: string): Promise<void> {
 // than the glass ever gets (light text that clears 4.5:1 on it clears it on the real, darker panels) and hides
 // the decoration, so axe can measure nearly everything. Chart text, which axe treats as part of an image, is
 // measured against the same flat colour here instead.
-const FLAT_GLASS = "#14223a";
+const FLAT_GLASS = "#1a2244";
 const FLATTEN = `
-  .cf-backdrop, .cf-grid, .cf-scanlines, .cf-beam, .cf-sweep { display: none !important; }
+  .cf-atmosphere, .cf-lamp, .cf-sweep { display: none !important; }
   *::before, *::after { display: none !important; }
   .hud-panel { background: ${FLAT_GLASS} !important; box-shadow: none !important; }
   .text-gradient { background: none !important; color: var(--color-arc) !important; }

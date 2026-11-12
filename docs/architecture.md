@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes what is built (Phases 1 to 3b) and how the remaining modules are intended to
+This document describes what is built (Phases 1 to 3c) and how the remaining modules are intended to
 plug in. Anything not built is labelled **planned**. The intended end state follows the project
 specification; nothing planned here should be read as implemented.
 
@@ -77,8 +77,8 @@ rules or incident handling yet.
 | Module | Purpose | Status | Where it lives or will live |
 | --- | --- | --- | --- |
 | Core platform | Config, logging, auth, errors, health | **Phase 1 done** | `backend/app/core`, `security`, `api`, `database` |
-| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API) and **Phases 3 and 3b done** (analyst screens) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py`; UI in `frontend/src` |
-| SOC | Command-centre UI, triage, analytics | **Phases 3 and 3b done** for threat intelligence: the overview command deck, investigate, indicator list and detail, status. Alerts, incidents and live telemetry are not built | `frontend/src` |
+| Intel | Threat-intelligence ingestion, IOC investigation, caching | **Phase 2 done** (API) and **Phases 3 to 3c done** (analyst screens) | `collectors/`, `services/`, `correlation/scoring.py`, `api/v1/intel.py`; UI in `frontend/src` |
+| SOC | Command-centre UI, triage, analytics | **Phases 3 to 3c done** for threat intelligence: the overview command deck, investigate, indicator list and detail, status. Alerts, incidents and live telemetry are not built | `frontend/src` |
 | Sentinel | Defensive network monitoring and anomaly detection | Not started | `sensor/`, `detection/` |
 | Core (correlation) | Event normalisation, correlation, scoring, rules | Indicator scoring only; event correlation and rules not started | `correlation/`, `detection/` |
 | Case | Incidents, notes, timelines | Not started | `services/`, `models/` |
@@ -159,13 +159,16 @@ including upgrade, downgrade and upgrade again on the real engine. Production re
 
 React 19 and TypeScript, built with Vite and styled with Tailwind CSS 4 (dark theme only). Routing is
 `react-router`. There is no state-management, data-fetching or charting library: the only runtime
-dependencies are React, React Router and two self-hosted font packages (Oxanium and JetBrains
-Mono), so the page never asks a third party for anything. The production build is one JavaScript
-chunk of about 390 KiB (minified, before compression) and about 67 KiB of CSS.
+dependencies are React, React Router, anime.js (the animation library: MIT, with no dependencies of
+its own) and two self-hosted font packages (Oxanium and JetBrains Mono), so the page never asks a
+third party for anything. The production build is one JavaScript chunk of about 443 KiB (minified,
+before compression; about 139 KiB gzipped) and about 72 KiB of CSS.
 
 Phase 3 built the screens. Phase 3b redesigned them as a dense "command deck" and added the one
-aggregate endpoint the overview draws from. The screens contain no scoring logic of their own: they
-show what the API returns and, where it is silent, say so.
+aggregate endpoint the overview draws from. Phase 3c restyled them as "Aurora Forge" and added the
+motion layer (see [below](#aurora-forge-and-the-motion-layer)); it changed no route, request or
+wording. The screens contain no scoring logic of their own: they show what the API returns and,
+where it is silent, say so.
 
 | Route | Screen | Data |
 | --- | --- | --- |
@@ -188,13 +191,14 @@ fails, because the pages report their own errors.
 ```text
 pages/               route-level screens
 components/          shared presentational pieces (Card, Pagination, ErrorNotice, ...) and Layout
-components/shell/    top bar, navigation rail, command palette, shortcuts, API beacon, backdrop, banner
+components/shell/    top bar, navigation rail (with the lamp), command palette, shortcuts, API beacon, atmosphere, motion director, banner
 components/hud/      the visual language: Panel, PageHeader, StatusLed, AnimatedNumber, DecodeText, CipherWheel, Overlay
 components/charts/   hand-built SVG charts (area, ring, radar, dot map, heat grids, ranked bars, sparkline, gauge)
 components/overview/ the overview's tiles, drawer, lists and panels
 components/intel/    the investigation view: verdict, one card per provider, score, internal evidence
 components/status/   the shared service check and the status page's "reactor" graphic
 effects/             the visual-effects switch (EffectsProvider, useEffects)
+motion/              the anime.js motion layer: atmosphere, particle field, pointer light, entrances, navigation lamp
 features/            domain logic with no React (labels, formatting, filters, links, summaries, map data)
 hooks/               stateful logic (useApiResource, useLiveResource, useInvestigate, useServiceStatus, ...)
 services/            the API client, per-resource services and the runtime response checks
@@ -260,10 +264,12 @@ and a short module code, status LEDs, numbers that count up, a cipher-wheel moti
 the palette and drawers. Colour is never the only carrier of meaning, and text is never dimmer than
 `ink-300` because anything dimmer fails WCAG AA contrast on a panel.
 
-Effects are the animated backdrop (glow, grid, scanlines, a slow beam), counting numbers, charts that
-draw themselves, decoded text and the spinning wheel. One switch (`effects/EffectsProvider`) turns
-them all off: it writes `data-effects="on|off"` on `<html>` and the stylesheet stills every animation
-from that one place. The operating system's reduced-motion setting always wins: the switch is then
+Effects are the animated background (aurora orbs, a grid floor, drifting particles, a light that
+follows the pointer), the glass that catches that light, the navigation lamp, staggered entrances,
+counting numbers, charts that draw themselves, decoded headings and the spinning wheel. One switch
+(`effects/EffectsProvider`) turns them all off: it writes `data-effects="on|off"` on `<html>`, the
+stylesheet stills every CSS animation from that one place, and `motion/useMotion` stops the code
+that animates. The operating system's reduced-motion setting always wins: the switch is then
 disabled, with a tooltip that says why. Nothing depends on an effect, and the tests run both ways.
 
 The charts are small SVG components with no chart library behind them. `geometry.ts` holds the
@@ -279,6 +285,87 @@ indicators", the effects switch), and `G` then `O`, `I`, `L` or `S` goes to a pa
 the typed value to its page in the router's history state, not in the address, so a lookup never
 puts the indicator in a URL. (The list's search does keep its query in the address, on purpose, so
 that a filtered view can be bookmarked.)
+
+### Aurora Forge and the motion layer
+
+Phase 3c changed how the console looks and moves, and nothing else. No route, request, heading,
+label, accessible name or test id changed, so the existing browser tests are the proof that the
+behaviour did not. The one existing spec that was edited is the contrast audit, because the glass is
+a new set of surfaces for it to flatten (see [Contrast](#contrast)).
+
+**The look.** Glass over a living background. The ground is deep indigo (`ink-950`); panels are
+translucent with a hairline border and a soft highlight; three spectral accents (cyan `cipher`,
+violet `arc`, magenta `pulse`) carry the identity, with `ember` for warnings and a pink-red for
+critical. The charts, badges and gradient headings use the same tokens. Everything that is a fixed
+look lives in CSS (`src/index.css`).
+
+**What moves, and what moves it.** Anything that must follow the pointer, the route, a number or
+the clock is in `src/motion/` and uses [anime.js](https://animejs.com) 4.5.0 (MIT, no dependencies
+of its own). `motion/anime.ts` is the only file that imports it, so the rest of the code depends on
+a small surface.
+
+| Module | What it does |
+| --- | --- |
+| `useMotion` | The one question every effect asks: is the effects switch on, and can this browser run Web Animations and registered custom properties (`canAnimate`)? |
+| `pointer` | One shared pointer tracker. It only follows a fine, hovering pointer (never touch) and treats a window blur as "left the page". |
+| `atmosphere`, `field` | The background: the orbs drift and breathe (23, 29 and 34 s trips, on the compositor), lean a little away from the pointer, the grid floor slides one 64 px cell every 3.6 s, a soft light follows the pointer, and a canvas of drifting dots is drawn from an anime.js timer at 30 frames a second (18 to 72 dots, depending on the window's area). |
+| `panelGlow` | Sets `--mx`, `--my` and `data-lit` on `.hud-panel` and `.cf-glow` elements within 140 px of the pointer; the stylesheet draws the spotlight and the glowing edge from those. All rectangles are read before any style is written. |
+| `reveal` | A `MutationObserver` gives every `[data-reveal]` panel, tile and page header a staggered entrance (640 ms, last one starts within 520 ms). When it ends, the inline styles it left are removed, so the element is exactly the one that was never animated. |
+| `lamp` | The navigation's "tubelight": an anime.js animatable glides a lit pill onto the link of the open page. It measures to the sub-pixel (four tabs share 390 px on a phone), measures again on any resize of the track or a link, and goes dark on a page that has no link. |
+
+Two components in `components/hud/` use the same switch. `AnimatedNumber` counts up from the figure
+on screen, writing into one text node so React does not re-render sixty times a second;
+`DecodeText` resolves headings of up to 160 characters out of scrambled characters with anime.js's
+`scrambleText`. Both show the real value to assistive technology at once and hide the animation
+from it, and what is left when they settle is the plain text, as it renders with effects off.
+
+**Rules the layer keeps**
+
+- **Off means off.** With the switch off, with reduced motion, or in a browser without the engine
+  (the unit-test DOM is one), nothing starts: no canvas, no cursor light, no lamp, no running
+  animation. The page is the same page, standing still.
+- **Everything that starts can stop.** Each starter returns a function that cancels its animations
+  and puts every inline style back. Switching effects off and on again does not replay the page:
+  an element that finished its entrance never gets another. One that was cut short does, because
+  React's StrictMode runs effects twice in development and the entrance still has to play.
+- **Decoration is inert.** The background is `aria-hidden`, `pointer-events: none` and outside the
+  tab order; the lamp is `aria-hidden`; nothing is announced while it animates.
+- **Quiet.** The motion code never writes to the console (anime.js warns about an empty target
+  list, so one is never passed), because the browser tests treat any console message as a failure.
+- **Allowed by the Content Security Policy.** anime.js is used through Web Animations, writes to
+  elements' styles through the CSS object model (which `style-src 'self'` permits) and draws on a 2D
+  canvas. There is no `eval`, no `new Function`, no WebGL, no inline `<style>` and no host beyond
+  the page's own origin. The production build was scanned for these, and the browser tests fail on
+  any violation.
+- **Cheap where it matters.** Backdrop blur, the costliest thing to paint, is applied only while
+  effects are on; the dots are capped and drawn at 30 frames a second; the orbs and the grid run
+  on the compositor.
+
+#### Contrast
+
+Light that moves behind text could make its contrast unpredictable, so text that sits on tinted
+surfaces (badges, notices, chips) is put on a `.cf-plate`: a solid dark plate, mixed from the ink
+colour and the label's own colour, so its contrast never depends on the spotlight, a hovered row or
+an orb drifting underneath. Panels themselves stay the dark glass the `ink-300` rule already
+covers.
+
+The accessibility audit measures this on the real pages. It hides the moving layers, paints every
+panel one flat colour that is lighter than the glass ever gets (`#1a2244`, so light text that clears
+4.5:1 on it clears it on the real panels) and has axe measure every text run, short ones included.
+The ordinary axe scan of the same screens also runs with the effects on, with motion reduced and on
+a phone. A one-off probe of the live page, in a real browser with the effects running, found no
+text run below 4.5:1; that probe is not part of the repository, so the audit above is what keeps
+it true.
+
+#### Where the ideas came from
+
+The design is original code. [21st.dev](https://21st.dev) (a community registry of React
+components) and [GetLayers](https://getlayers.ai) (generated layered backgrounds) were the
+references for the style: glass that catches the light, a gliding navigation lamp, a layered
+atmosphere. Neither could be used directly: 21st.dev's installer needs a login and its terms
+require attribution for copied components, and GetLayers' terms forbid copying its prompts. So
+nothing was copied from either; the patterns were rebuilt from scratch on anime.js and CSS. They are
+credited under [Credits](../README.md#credits).
 
 ### Layout rules
 
@@ -310,7 +397,12 @@ drives a real browser through the production build, served with the headers from
 against the real API running with simulated providers on a seeded throwaway database. It checks
 figures against the API's own answers, runs every screen through axe-core, enlarges the text and
 shrinks the window, feeds the page hostile and extreme data, and verifies in the browser itself that
-the Content Security Policy blocks injected content and that nothing leaves the origin. See
+the Content Security Policy blocks injected content and that nothing leaves the origin. The motion
+layer has unit tests of its own (`src/motion/*.test.ts`) and a browser spec, `e2e/motion.spec.ts`,
+that checks the effects really run (the canvas is painted and changing, the orbs are animating, the
+lamp sits on the open page's link and glides to the next, a heading decodes while its accessible
+name never changes), that the switch and reduced motion remove them without replaying the page, and
+that every screen still fits the window with them on, at desktop and phone width. See
 [Testing the dashboard](../README.md#testing-the-dashboard) to run it and for what a green run does
 not prove.
 

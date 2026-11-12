@@ -5,7 +5,7 @@ const RINGS = [14, 26, 38, 50] as const;
 /** A radar that sweeps while the providers are asked. It shows waiting, not progress. */
 export default function ScanLoader({ indicator }: { indicator: string }) {
   return (
-    <div className="hud-panel relative flex flex-wrap items-center gap-6 overflow-hidden rounded-[3px] p-5">
+    <div data-reveal className="hud-panel relative flex flex-wrap items-center gap-6 overflow-hidden rounded-ui p-5">
       <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false" className="size-28 shrink-0">
         {RINGS.map((radius) => (
           <circle key={radius} cx="60" cy="60" r={radius} fill="none" strokeWidth="1" className="stroke-ink-600" />

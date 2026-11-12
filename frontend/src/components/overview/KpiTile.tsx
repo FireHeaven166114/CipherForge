@@ -50,12 +50,12 @@ export default function KpiTile({
 }: KpiTileProps) {
   const style = TONES[tone];
   return (
-    <li className="min-w-0">
+    <li data-reveal className="min-w-0">
       <Link
         to={to}
-        className="hud-panel group relative flex h-full flex-col rounded-[3px] p-4 pl-5 transition hover:border-cipher/70 hover:shadow-glow"
+        className="hud-panel group relative flex h-full flex-col rounded-ui p-4 pl-5 transition hover:border-cipher/60 hover:shadow-glow"
       >
-        <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${style.edge}`} />
+        <span aria-hidden="true" className={`absolute inset-y-4 left-0 w-[3px] rounded-r-full ${style.edge}`} />
         <span className="flex items-center justify-between gap-2">
           <span className={`${LABEL} flex items-center gap-2`}>
             {pulsing ? <StatusLed tone="bad" pulsing /> : null}

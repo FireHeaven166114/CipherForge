@@ -28,8 +28,8 @@ export default function ModulesPanel() {
         {MODULES.map((module) => (
           <li
             key={module.name}
-            className={`flex flex-col justify-between gap-3 rounded-[3px] border p-3 ${
-              module.live ? "border-ok/40 bg-ok/5" : "border-dashed border-ink-600 bg-ink-900/40"
+            className={`flex flex-col justify-between gap-3 rounded-ui border p-3 ${
+              module.live ? "border-ok/40 bg-ok/5" : "border-dashed border-ink-500 bg-ink-900/40"
             }`}
           >
             <div>
@@ -40,8 +40,8 @@ export default function ModulesPanel() {
               <p className="mt-1 text-xs text-ink-300">{module.summary}</p>
             </div>
             <span
-              className={`self-start rounded-[3px] border px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] ${
-                module.live ? "border-ok/60 bg-ok/10 text-ok" : "border-ink-500 text-ink-300"
+              className={`self-start rounded-chip border px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] ${
+                module.live ? "cf-plate border-ok/60 text-ok" : "border-ink-500 text-ink-300"
               }`}
             >
               {module.live ? "Live" : "Planned"}

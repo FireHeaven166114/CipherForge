@@ -81,7 +81,7 @@ export default function MatrixHeatmap({ rows }: MatrixHeatmapProps) {
                 <th scope="row" className="px-1 text-left font-medium text-ink-100">
                   <Link
                     to={indicatorsHref({ type: row.indicator_type })}
-                    className="rounded-sm hover:text-cipher"
+                    className="rounded-chip hover:text-cipher"
                   >
                     {typeLabel}
                   </Link>
@@ -90,7 +90,7 @@ export default function MatrixHeatmap({ rows }: MatrixHeatmapProps) {
                   const count = row.counts[band] ?? 0;
                   if (count === 0) {
                     return (
-                      <td key={band} className="rounded-[2px] bg-ink-900/60 py-2 text-center font-mono text-xs text-ink-300">
+                      <td key={band} className="rounded-chip bg-ink-900/60 py-2 text-center font-mono text-xs text-ink-300">
                         0
                       </td>
                     );
@@ -98,11 +98,11 @@ export default function MatrixHeatmap({ rows }: MatrixHeatmapProps) {
                   const tint = HEAT[band][heatLevel(count, peak, LEVELS) - 1] ?? "";
                   const cell = "block py-2 text-center font-mono text-sm font-semibold tabular-nums text-ink-50";
                   return (
-                    <td key={band} className={`rounded-[2px] p-0 ${tint}`}>
+                    <td key={band} className={`rounded-chip p-0 ${tint}`}>
                       <Link
                         to={indicatorsHref({ type: row.indicator_type, classification: band })}
                         aria-label={`${typeLabel}, ${bandLabel(band)}: ${plural(count, "indicator")}`}
-                        className={`${cell} rounded-[2px] transition hover:bg-ink-950/25 hover:inset-ring-1 hover:inset-ring-cipher`}
+                        className={`${cell} rounded-chip transition hover:bg-ink-950/25 hover:inset-ring-1 hover:inset-ring-cipher`}
                       >
                         {count}
                       </Link>

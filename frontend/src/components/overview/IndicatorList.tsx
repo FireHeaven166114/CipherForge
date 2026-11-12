@@ -39,7 +39,7 @@ export default function IndicatorList({ indicators, label, emptyText }: Indicato
           <li key={indicator.indicator_id}>
             <Link
               to={`/indicators/${encodeURIComponent(indicator.indicator_id)}`}
-              className="group relative flex items-center gap-3 rounded-[3px] py-2 pl-4 pr-2 transition hover:bg-cipher/10 focus-visible:bg-cipher/10"
+              className="group relative flex items-center gap-3 rounded-control py-2 pl-4 pr-2 transition hover:bg-cipher/[0.06] focus-visible:bg-cipher/[0.06]"
             >
               <span aria-hidden="true" className={`absolute inset-y-1.5 left-0 w-0.5 rounded-full ${edge}`} />
               <span aria-hidden="true" className="font-mono text-[0.68rem] text-ink-300">

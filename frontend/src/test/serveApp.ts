@@ -43,7 +43,7 @@ export function serveEverything({
     if (pathname === "/api/v1/intel/indicators") return jsonResponse(makePage([makeIndicator()]));
     if (pathname.startsWith("/api/v1/intel/indicators/")) return jsonResponse(makeInvestigation());
     if (pathname === "/health") {
-      return jsonResponse({ status: "ok", service: "cipherforge-api", version: "0.4.0" });
+      return jsonResponse({ status: "ok", service: "cipherforge-api", version: "0.5.0" });
     }
     if (pathname === "/ready") return jsonResponse({ status: "ready", checks: { database: "ok" } });
     return failure(404, "not_found", "No such route.");

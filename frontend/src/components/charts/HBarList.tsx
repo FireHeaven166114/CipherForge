@@ -24,8 +24,8 @@ interface HBarListProps {
 }
 
 const ROW =
-  "grid w-full grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-[3px] px-2 py-1.5 text-left";
-const ROW_BUTTON = `${ROW} transition hover:bg-cipher/10 focus-visible:bg-cipher/10`;
+  "grid w-full grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-control px-2 py-1.5 text-left";
+const ROW_BUTTON = `${ROW} transition hover:bg-cipher/[0.06] focus-visible:bg-cipher/[0.06]`;
 
 /** Ranked horizontal bars. Each bar is coloured by the highest risk behind it, never by colour alone. */
 export default function HBarList({ items, label, noun, emptyText, onSelect, limit }: HBarListProps) {
@@ -60,7 +60,7 @@ export default function HBarList({ items, label, noun, emptyText, onSelect, limi
               focusable="false"
               viewBox="0 0 100 6"
               preserveAspectRatio="none"
-              className="col-span-3 h-1.5 w-full"
+              className="col-span-3 h-1.5 w-full rounded-full"
             >
               <rect width="100" height="6" className="fill-ink-800" />
               <rect

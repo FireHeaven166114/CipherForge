@@ -60,8 +60,8 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="hud-panel overflow-hidden rounded-[3px] shadow-glow">
-      <div className="flex items-center gap-3 border-b border-ink-700 px-4">
+    <div className="hud-panel overflow-hidden rounded-ui shadow-glow">
+      <div className="flex items-center gap-3 border-b border-white/10 px-4">
         <SearchIcon className="size-5 shrink-0 text-cipher" />
         <input
           type="text"
@@ -96,7 +96,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
             aria-selected={index === active}
             onMouseMove={() => setCursor(index)}
             onClick={() => run(item)}
-            className={`flex cursor-pointer items-center justify-between gap-4 rounded-[3px] border px-3 py-2.5 text-sm ${
+            className={`flex cursor-pointer items-center justify-between gap-4 rounded-control border px-3 py-2.5 text-sm transition-colors ${
               index === active
                 ? "border-cipher/50 bg-cipher/10 text-ink-50"
                 : "border-transparent text-ink-200"
@@ -107,7 +107,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
           </li>
         ))}
       </ul>
-      <p aria-hidden="true" className="border-t border-ink-700 px-4 py-2 text-xs text-ink-300">
+      <p aria-hidden="true" className="border-t border-white/10 px-4 py-2 text-xs text-ink-300">
         ↑ ↓ move · Enter run · Esc close
       </p>
     </div>

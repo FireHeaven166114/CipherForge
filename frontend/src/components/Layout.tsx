@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router";
 
-import Backdrop from "./shell/Backdrop";
+import Atmosphere from "./shell/Atmosphere";
 import CommandPalette from "./shell/CommandPalette";
+import MotionDirector from "./shell/MotionDirector";
 import NavRail from "./shell/NavRail";
 import SimulationBanner from "./shell/SimulationBanner";
 import TopBar from "./shell/TopBar";
@@ -39,7 +40,7 @@ function Shell() {
 
   return (
     <div className="relative flex min-h-screen flex-col text-ink-100">
-      <Backdrop />
+      <Atmosphere />
       <a
         href="#main-content"
         onClick={(event) => {
@@ -47,7 +48,7 @@ function Shell() {
           event.preventDefault();
           main.current?.focus();
         }}
-        className="sr-only rounded-[3px] bg-cipher px-3 py-2 text-sm font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50"
+        className="sr-only rounded-control bg-cipher px-3 py-2 text-sm font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50"
       >
         Skip to main content
       </a>
@@ -64,6 +65,7 @@ function Shell() {
           <Outlet />
         </main>
       </div>
+      <MotionDirector main={main} />
       <CommandPalette open={paletteOpen} onClose={closePalette} />
     </div>
   );

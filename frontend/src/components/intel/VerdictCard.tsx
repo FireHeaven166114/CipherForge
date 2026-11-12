@@ -56,7 +56,7 @@ export default function VerdictCard({ indicator, score }: VerdictCardProps) {
         />
         <div className="w-full min-w-0 flex-1 space-y-4">
           <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-            <span className="rounded-[3px] border border-cipher/50 bg-cipher/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-cipher">
+            <span className="rounded-chip border border-cipher/50 bg-cipher/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-cipher">
               {INDICATOR_TYPE_LABELS[indicator.indicator_type]}
             </span>
             <p className="min-w-0 break-all font-mono text-lg text-ink-50">{indicator.indicator_value}</p>
@@ -65,7 +65,7 @@ export default function VerdictCard({ indicator, score }: VerdictCardProps) {
           {assessed ? (
             <Confidence value={score.confidence} />
           ) : (
-            <p className="rounded-[3px] border border-warn/50 bg-warn/10 p-3 text-ink-100">
+            <p className="rounded-ui border border-warn/50 bg-warn/10 p-3 text-ink-100">
               <span aria-hidden="true" className="mr-2 text-warn">
                 ▲
               </span>
@@ -76,7 +76,7 @@ export default function VerdictCard({ indicator, score }: VerdictCardProps) {
         </div>
       </div>
 
-      <div className="mt-5 space-y-4 border-t border-ink-700/70 pt-4">
+      <div className="mt-5 space-y-4 border-t border-white/10 pt-4">
         <FactList
           facts={[
             { label: "Status", value: `${status.label}. ${status.detail}` },

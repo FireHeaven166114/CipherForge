@@ -29,12 +29,12 @@ interface DonutProps {
 }
 
 const ENTRY =
-  "grid grid-cols-[1.25rem_minmax(0,1fr)_auto_3rem] items-center gap-x-2 rounded-[3px] px-2 py-1 text-left text-sm";
+  "grid grid-cols-[1.25rem_minmax(0,1fr)_auto_3rem] items-center gap-x-2 rounded-control px-2 py-1 text-left text-sm";
 
 // The ::after spreads the link over its whole row (the <li> is the positioning parent), and the focus
 // ring is drawn on it for the same reason: the label alone is clipped by the cell around it.
 const ROW_LINK =
-  "after:absolute after:inset-0 after:rounded-[3px] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-cipher";
+  "after:absolute after:inset-0 after:rounded-control focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-cipher";
 
 function percent(value: number, total: number): string {
   const share = (value / total) * 100;
@@ -138,7 +138,7 @@ export default function Donut({ slices, noun, label, centerCaption, emptyText }:
             <li key={slice.key} className="relative">
               {slice.to !== undefined ? (
                 <div
-                  className={`${ENTRY} transition hover:bg-cipher/10 has-[a:focus-visible]:bg-cipher/10`}
+                  className={`${ENTRY} transition hover:bg-cipher/[0.06] has-[a:focus-visible]:bg-cipher/[0.06]`}
                   {...handlers}
                 >
                   {cells}

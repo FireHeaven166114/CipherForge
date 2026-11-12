@@ -100,8 +100,8 @@ function FactorTable({ score }: { score: Score }) {
 /** The rules of intel-risk-v1, in words. Only shown for that methodology, so it cannot go stale. */
 function Methodology() {
   return (
-    <details className="rounded-[3px] border border-ink-700 bg-ink-900/50 p-3 open:border-cipher/40">
-      <summary className="cursor-pointer rounded-sm font-medium text-ink-50 marker:text-cipher">
+    <details className="rounded-ui border border-white/10 bg-ink-900/50 p-3 open:border-cipher/40">
+      <summary className="cursor-pointer rounded-chip font-medium text-ink-50 marker:text-cipher">
         How scores are calculated ({KNOWN_METHODOLOGY})
       </summary>
       <ul role="list" className="mt-3 list-disc space-y-1.5 pl-5 marker:text-cipher">

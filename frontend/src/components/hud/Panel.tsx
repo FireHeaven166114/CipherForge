@@ -15,9 +15,13 @@ interface PanelProps {
   children: ReactNode;
 }
 
-const BRACKET = "pointer-events-none absolute size-2.5";
+const MARKERS = { default: "from-cipher to-arc", alert: "from-crit to-ember" } as const;
 
-/** A glass HUD panel with corner brackets and an optional titled header. */
+/**
+ * A frosted-glass panel with an optional titled header. The glass, its lit top edge and the light
+ * that follows the pointer are drawn by .hud-panel (see index.css); the panel joins the page's
+ * entrance through data-reveal (see motion/reveal.ts).
+ */
 export default function Panel({
   title,
   as: Heading = "h2",
@@ -28,20 +32,16 @@ export default function Panel({
   bodyClassName = "p-4",
   children,
 }: PanelProps) {
-  const bracket = tone === "alert" ? "border-crit" : "border-cipher/80";
   return (
     <section
-      className={`hud-panel relative min-w-0 rounded-[3px] ${tone === "alert" ? "shadow-glow-crit" : ""} ${className}`}
+      data-reveal
+      className={`hud-panel relative min-w-0 rounded-ui ${tone === "alert" ? "shadow-glow-crit" : ""} ${className}`}
     >
-      <span aria-hidden="true" className={`${BRACKET} -left-px -top-px border-l-2 border-t-2 ${bracket}`} />
-      <span aria-hidden="true" className={`${BRACKET} -right-px -top-px border-r-2 border-t-2 ${bracket}`} />
-      <span aria-hidden="true" className={`${BRACKET} -bottom-px -left-px border-b-2 border-l-2 ${bracket}`} />
-      <span aria-hidden="true" className={`${BRACKET} -bottom-px -right-px border-b-2 border-r-2 ${bracket}`} />
       {title !== undefined || actions !== undefined ? (
-        <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-ink-700/70 px-4 py-2">
+        <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-white/10 px-4 py-2">
           {title !== undefined ? (
-            <Heading className="flex min-w-0 items-center gap-2 text-[0.8rem] font-semibold uppercase tracking-[0.14em] text-ink-100 wrap-anywhere">
-              <span aria-hidden="true" className="size-1.5 shrink-0 rotate-45 bg-cipher" />
+            <Heading className="flex min-w-0 items-center gap-2.5 text-[0.8rem] font-semibold uppercase tracking-[0.14em] text-ink-100 wrap-anywhere">
+              <span aria-hidden="true" className={`h-4 w-1 shrink-0 rounded-full bg-gradient-to-b ${MARKERS[tone]}`} />
               {code ? (
                 <span aria-hidden="true" className="font-mono text-[0.68rem] font-normal text-ink-300">
                   {code}

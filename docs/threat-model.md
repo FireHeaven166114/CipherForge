@@ -2,7 +2,7 @@
 
 A STRIDE analysis of what exists today: the Phase 1 platform (the API, its identity and database layer,
 the nginx front end, the container stack and the build pipeline), the Phase 2 threat-intelligence
-backend (outbound provider calls, third-party data, the audit trail) and the Phase 3 and 3b dashboard
+backend (outbound provider calls, third-party data, the audit trail) and the Phase 3 to 3c dashboard
 that displays that data. It is a living document: each
 new feature must extend it before it ships. **Vault in particular needs its own, separate threat
 model before any code is written.**
@@ -70,7 +70,7 @@ treated as untrusted data too: they are validated and bounded before use.
 | 17 | Request flood against the API | DoS | A per-user limit on investigations (30 a minute, in memory and per process) with `429` and `Retry-After`; nginx body limit and timeouts. Other routes and unauthenticated requests are not throttled. | Partly mitigated |
 | 18 | Key service (JWKS) outage causes auth failures | DoS | Keys cached for an hour; outage returns 503 with a distinct code. | Mitigated |
 | 19 | Actions not attributable to a user | Repudiation | Correlation IDs on every request; the authenticated subject is logged on denials; every investigation (including refused input) is written to the audit table with actor, target, result and correlation ID. Reads of stored indicators are not audited. | Partly mitigated |
-| 20 | Vulnerable or malicious dependency | Tampering | Exact pins, lockfile, `pip-audit`, `npm audit`, Dependabot, SHA-pinned Actions. Transitive Python packages are not hash-locked. | Partly mitigated |
+| 20 | Vulnerable or malicious dependency | Tampering | Exact pins, lockfile, `pip-audit`, `npm audit`, Dependabot, SHA-pinned Actions. Transitive Python packages are not hash-locked. Phase 3c added one runtime dependency, anime.js 4.5.0 (MIT, no dependencies of its own), imported from a single file and exercised under the strict CSP by every browser test. | Partly mitigated |
 | 21 | Compromised CI or build | Tampering | Least-privilege workflow, no persisted credentials, no secrets in the pipeline. Image signing and scanning are not in place. | Partly mitigated |
 | 22 | Weak or default database password | Spoofing | Compose requires `POSTGRES_PASSWORD`, the API refuses the `CHANGE_ME` template password in production. | Mitigated |
 | 23 | TLS stripped or absent | Information disclosure | Not provided by this stack; the front proxy must terminate TLS and set HSTS. | Operator responsibility |
@@ -103,7 +103,7 @@ treated as untrusted data too: they are validated and bounded before use.
   smoke test is the first real run (see [deployment.md](deployment.md#verification-status)).
 - The provider adapters were tested against recorded responses only, never the live services (see
   [threat-intelligence.md](threat-intelligence.md#verification-status)).
-- The dashboard was checked in a real browser (Microsoft Edge on Windows, 583 automated tests) against
+- The dashboard was checked in a real browser (Microsoft Edge on Windows, 596 automated tests) against
   a stand-in for nginx's headers, and with provider evidence only through simulated and invented
   answers, never the live services (see
   [threat-intelligence.md](threat-intelligence.md#verification-status)).
@@ -115,10 +115,12 @@ design, the scoring method and the provider behaviour are in
 [threat-intelligence.md](threat-intelligence.md). Later phases that add internal telemetry or any
 automated response must extend this model first.
 
-## Dashboard (Phases 3 and 3b)
+## Dashboard (Phases 3 to 3c)
 
-Phases 3 and 3b add a browser client that displays the Phase 2 data, including text written by third
+Phases 3 to 3c add a browser client that displays the Phase 2 data, including text written by third
 parties. Rows 11, 25 and 33 to 40 analyse it, and the controls are listed in
-[security.md](security.md#frontend-controls-phases-3-and-3b). Phase 3b added one read-only endpoint
+[security.md](security.md#frontend-controls-phases-3-to-3c). Phase 3b added one read-only endpoint
 (`GET /api/v1/intel/overview`, which needs the same role as the rest) and no new privileges: every
-call goes through the same authorised API routes.
+call goes through the same authorised API routes. Phase 3c restyled the screens and moved the
+effects onto an animation library (row 20): it added no endpoint, privilege, request, stored value
+or way to start a lookup, and its code reads no provider text, so rows 11, 33 and 37 are unchanged.

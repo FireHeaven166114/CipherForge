@@ -22,7 +22,7 @@ export default function ApiBeacon() {
     <Link
       to="/status"
       title="Open system status"
-      className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-[3px] border border-ink-600 bg-ink-900/70 px-2.5 py-1.5 text-[0.7rem] font-semibold tracking-[0.14em] transition hover:border-cipher/60 ${text}`}
+      className={`cf-glow flex shrink-0 items-center gap-2 whitespace-nowrap rounded-control border border-white/10 bg-ink-900/60 px-2.5 py-1.5 text-[0.7rem] font-semibold tracking-[0.14em] transition hover:border-cipher/50 ${text}`}
     >
       <StatusLed tone={tone} pulsing={overall === "operational"} />
       {label}

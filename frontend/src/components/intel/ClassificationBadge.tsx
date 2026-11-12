@@ -17,7 +17,7 @@ export default function ClassificationBadge({
 }: ClassificationBadgeProps) {
   if (!assessed) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-[3px] border border-dashed border-ink-400 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink-200">
+      <span className="inline-flex items-center gap-1.5 rounded-chip border border-dashed border-ink-400 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink-200">
         <span aria-hidden="true">?</span>
         Not assessed
       </span>
@@ -26,7 +26,7 @@ export default function ClassificationBadge({
   const { label, symbol, badge } = CLASSIFICATION_META[classification];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${badge}`}
+      className={`inline-flex items-center gap-1.5 rounded-chip border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${badge}`}
     >
       <span aria-hidden="true">{symbol}</span>
       {label}

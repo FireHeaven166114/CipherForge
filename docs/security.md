@@ -61,8 +61,8 @@ These come from the project specification and are applied as design rules:
 
 The built frontend contains no inline scripts or styles, which is what allows a strict CSP. The
 nginx configuration was exercised against a real nginx 1.30.6 build; see
-[deployment.md](deployment.md#verification-status). The Phase 3 and 3b bundle was later loaded in a
-real browser under the same policy; see [Frontend controls](#frontend-controls-phases-3-and-3b).
+[deployment.md](deployment.md#verification-status). The Phase 3 to 3c bundle was later loaded in a
+real browser under the same policy; see [Frontend controls](#frontend-controls-phases-3-to-3c).
 
 HSTS and TLS are intentionally **not** set by this stack: they belong to the TLS-terminating proxy
 or load balancer in front of it. Sending HSTS over plain HTTP is meaningless, and enabling it on a
@@ -125,19 +125,22 @@ log injection.
   changing or deleting audit rows, but a database superuser can drop them. Ship the rows to storage
   the application cannot write to if the trail must survive a database compromise.
 
-## Frontend controls (Phases 3 and 3b)
+## Frontend controls (Phases 3 to 3c)
 
 The dashboard displays text that third parties wrote (provider pulse names, tags, malware families,
 ISP names), so most of these controls are about displaying it safely and about not misleading the
 analyst. Phase 3b added charts, a map, a command palette, a details drawer and visual effects on top
-of the same rules, and a browser test suite that checks them against the shipped build.
+of the same rules, and a browser test suite that checks them against the shipped build. Phase 3c
+restyled every screen and moved the effects onto anime.js; it changed no request, route or wording,
+and the same tests run unchanged against it.
 
 | Control | Detail |
 | --- | --- |
 | Provider text is only ever text | Everything a provider supplies is rendered as React text, which escapes it: in lists, drawers and tooltips, and in the text inside the SVG charts and the map. ESLint fails the build on `dangerouslySetInnerHTML`, on assignments to `innerHTML` or `outerHTML`, and on `eval` and `new Function`, and the CSP would block inline script even if one slipped through. Browser tests give every list, chart label, drawer, tooltip and stored record names and values built to become markup, a script, a link or a broken layout, and check that each stays text: nothing is created in the page, nothing runs and nothing is followed. |
 | Outbound links cannot be steered | The only links to other sites go to OTX pulses and MITRE ATT&CK techniques. Each URL is built from a fixed base and an identifier that must match a strict pattern (24 hexadecimal characters for a pulse; `T1234` or `T1234.001` for a technique), so provider data never chooses a host, a path or a scheme. A value that does not match is shown as plain text. The links open in a new tab with `rel="noopener noreferrer"`. |
 | Route parameters are checked before use | The detail page accepts only a UUID. Anything else shows "not found" and sends no request, so a crafted link such as `/indicators/..%2F..%2Fhealth` cannot make the app call a different API path. Identifiers placed in a request are URL-encoded. |
-| Strict CSP is satisfied | The production HTML has no inline script, no `<style>` element, no `style=` attribute and no event handler, and nothing in the app needs the policy loosened (the one style the code sets, a legend swatch's opacity, goes through the CSSOM, which the policy permits). Every browser test fails on a CSP violation, so each screen, drawer and palette state it visits ran under the exact policy in `frontend/nginx.conf`. Twenty further scenes inject script, event handlers, `javascript:` links, styles, `<base>`, frames, forms, sockets, beacons and `data:` or `blob:` scripts into the running page, and check that the browser refuses each one; another test checks that `eval`, `new Function` and string timers are refused even from the app's own script file. |
+| Strict CSP is satisfied | The production HTML has no inline script, no `<style>` element, no `style=` attribute and no event handler, and nothing in the app needs the policy loosened (the styles the code sets, such as a legend swatch's opacity and the motion layer's pointer positions, are written through the CSSOM, and its animations run through the Web Animations API; the policy permits both). Every browser test fails on a CSP violation, so each screen, drawer and palette state it visits ran under the exact policy in `frontend/nginx.conf`. Twenty further scenes inject script, event handlers, `javascript:` links, styles, `<base>`, frames, forms, sockets, beacons and `data:` or `blob:` scripts into the running page, and check that the browser refuses each one; another test checks that `eval`, `new Function` and string timers are refused even from the app's own script file. |
+| The motion layer adds no way in | Phase 3c's effects use anime.js through Web Animations, CSSOM writes and a 2D canvas. They read no provider text, make no request, store nothing, and use no `eval`, `new Function`, WebGL, inline style or other host. The built bundle was scanned: no `eval(`, no `new Function`, no source-map reference, only `.html`, `.css`, `.js`, `.svg` and `.woff2` files in the output, and the only host names in it are XML namespaces, placeholder and documentation addresses inside libraries, and the fixed OTX and MITRE link bases. The privacy browser test still checks every request of a full session against the page's own origin, and every browser test fails on a console error or warning, so a failing effect cannot hide. |
 | Almost nothing is kept in the browser | The only thing the console stores is the visual-effects choice (`cipherforge.effects`, `on` or `off` in `localStorage`), and only after a person changes the switch. There is no `sessionStorage`, cookie, IndexedDB, cache or service worker. When sign-in exists, the token is requested for each call and never stored. The Indicators page keeps its filters, including the search text, in the address so that views can be bookmarked; that text can therefore appear in browser history. The command palette's "Search indicators" uses the same address. What is typed on the Investigate page, or handed to it from the palette, is sent in the body of a `POST` and is never put in an address. A browser test walks a full session and checks all of this. |
 | No third party sees the analyst | The fonts, the world map and every icon are built into the console, so there is no CDN, font host or map tile server to learn who is using it. `Referrer-Policy: no-referrer` and `noreferrer` links keep the address from reaching OTX or MITRE. Requests use `cache: "no-store"` and the API replies `Cache-Control: no-store`. A browser test follows a session through every screen and checks that each request went to the console's own origin and carried no cookie and no `Referer`. Its check was shown to be able to fail: loosening the referrer policy made it fail. |
 | No cross-site tricks | The API sends no CORS headers, so another site cannot read its answers. A form or `text/plain` request from another site is refused with `422` and starts no lookup, and nothing in the API changes or deletes a stored indicator. No address or link can start a lookup either: one starts only when the analyst presses Investigate or chooses the palette's Investigate entry, whose value travels in navigation state, not in an address. Another site cannot put the console in a frame (`frame-ancestors 'none'` and `X-Frame-Options: DENY`). Each is tested in a browser or against the running API. |
@@ -179,6 +182,14 @@ banner on every screen whenever any provider is simulated.
   14 days), and the response says when a bound cut a figure short. There is no per-user limit on
   reads, so many dashboards refreshing every minute add up. Cache or pre-aggregate it before a busy
   installation uses it.
+- **The effects were not tuned on slow hardware.** The particle field is capped and drawn at 30
+  frames a second, backdrop blur is only used while effects are on, and one switch (or the system's
+  reduced-motion setting) stops everything, but nobody measured the frame rate on an old laptop or
+  phone. A person who finds it heavy should switch the effects off.
+- **The look has not been judged by eye.** The redesign was checked by measurement: layout and
+  overflow at eight window sizes and at 200% text with the effects off and, with them on, at desktop
+  and phone width; contrast on every text run; that each effect is really running; and that nothing
+  it does reaches the console or the network. A person has not yet reviewed it on a screen.
 
 ## Dependency management
 
@@ -189,6 +200,7 @@ Pins and the reasoning behind the non-obvious ones:
 | Python packages | Direct dependencies pinned in `requirements.txt`; transitive packages float within them. `pip-audit` checks the resolved set in CI. A hash-locked file (`pip-compile --generate-hashes`) is a possible later hardening. |
 | `httpx2` | The maintained continuation of HTTPX. Starlette's test client prefers it, and the provider adapters use it. Its request logging is silenced because it records full URLs. |
 | TypeScript 6.0.3 | The latest stable `typescript-eslint` does not support TypeScript 7 yet. Revisit when it does. |
+| anime.js 4.5.0 | The animation library behind the visual effects (Phase 3c). MIT licence, no dependencies of its own (its optional peers `three` and `@types/three` are not installed), exactly pinned, and imported from one file (`src/motion/anime.ts`), so only the parts the app uses are in the bundle. It is the only runtime dependency added in Phase 3c; `npm audit` and Dependabot cover it like the rest. Its lockfile entry carries the registry's SHA-1 integrity value, as do a little over half of the lockfile's entries. |
 | `minimatch` override (`11.0.4`) | Dev-tooling dependencies pulled in a `minimatch` version affected by a denial-of-service advisory (GHSA-g3hv-75wg-m249). The override keeps `npm audit` at zero findings. Remove it once upstream packages update. |
 | Node 24 image | The toolchain needs a recent Node (Vitest 5 requires 22.12 or newer, and `package.json` sets `engines` to 22.22 or newer); CI and the Docker build use Node 24. |
 

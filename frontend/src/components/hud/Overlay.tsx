@@ -107,7 +107,7 @@ export default function Overlay({
   const { wrapper, panel } = PLACEMENT[placement];
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex animate-fade bg-void/75 backdrop-blur-sm ${wrapper}`}
+      className={`fixed inset-0 z-50 flex animate-fade bg-void/70 backdrop-blur-md ${wrapper}`}
       onMouseDown={(event) => {
         if (event.target !== event.currentTarget) return;
         // Without this the browser moves focus to the page after the overlay has already given it

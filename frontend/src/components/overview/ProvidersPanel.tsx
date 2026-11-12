@@ -10,7 +10,7 @@ export default function ProvidersPanel({ providers }: { providers: readonly Prov
   return (
     <Panel title="Intelligence providers" code="SRC" className="h-full">
       {configured.length === 0 ? (
-        <div role="note" className="mb-3 rounded-[3px] border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
+        <div role="note" className="mb-3 rounded-ui border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
           <p className="flex items-center gap-2 font-semibold">
             <span aria-hidden="true">▲</span>
             No threat-intelligence provider is configured
@@ -21,7 +21,7 @@ export default function ProvidersPanel({ providers }: { providers: readonly Prov
           </p>
         </div>
       ) : null}
-      <ul role="list" className="divide-y divide-ink-700/60">
+      <ul role="list" className="divide-y divide-white/10">
         {providers.map((provider) => (
           <li
             key={provider.name}

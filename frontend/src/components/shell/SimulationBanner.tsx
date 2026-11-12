@@ -14,7 +14,7 @@ export default function SimulationBanner() {
   return (
     <section
       aria-label="Demo data notice"
-      className="relative z-10 border-b border-ember/40 bg-ember/10 px-4 py-1.5 text-center text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-ember"
+      className="cf-plate relative z-10 border-b border-ember/40 px-4 py-1.5 text-center text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-ember"
     >
       <span aria-hidden="true">▲ </span>
       Simulated providers: this is demo data, not real threat intelligence

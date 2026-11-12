@@ -3,7 +3,7 @@ import { fetchMe } from "../../services/identityService";
 
 // Shown only when the top bar (a size container) is wide enough to hold them beside everything else.
 const CHIP =
-  "hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[3px] border px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] @min-[75rem]:inline-flex";
+  "hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip border px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] @min-[75rem]:inline-flex";
 
 /**
  * Who the API thinks you are, as a role (never an id or a name), and whether it is running in
@@ -17,7 +17,7 @@ export default function IdentityChip() {
   if (state.status === "error") {
     if (state.error.status !== 401) return null;
     return (
-      <span className={`${CHIP} border-warn/60 bg-warn/10 text-warn`}>
+      <span className={`${CHIP} cf-plate border-warn/60 text-warn`}>
         <span aria-hidden="true">▲</span>
         Not signed in
       </span>
@@ -34,7 +34,7 @@ export default function IdentityChip() {
         <span className="truncate">{roles.length > 0 ? roles.join(" · ") : "No role"}</span>
       </span>
       {authMode === "dev" ? (
-        <span className={`${CHIP} border-ember/60 bg-ember/10 text-ember`} title="Development sign-in">
+        <span className={`${CHIP} cf-plate border-ember/60 text-ember`} title="Development sign-in">
           Dev auth
         </span>
       ) : null}

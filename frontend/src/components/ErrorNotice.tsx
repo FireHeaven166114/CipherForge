@@ -76,7 +76,7 @@ export default function ErrorNotice({ error, onRetry }: ErrorNoticeProps) {
   return (
     <div
       role="alert"
-      className="rounded-[3px] border border-crit/60 bg-crit/10 p-4 text-sm text-ink-100 shadow-glow-crit"
+      className="cf-plate rounded-ui border border-crit/60 p-4 text-sm text-ink-100 shadow-glow-crit [--plate:var(--color-crit)]"
     >
       <p className="flex items-center gap-2 font-semibold text-crit">
         <span aria-hidden="true">✕</span>

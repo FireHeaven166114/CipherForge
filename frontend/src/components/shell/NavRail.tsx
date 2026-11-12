@@ -1,6 +1,8 @@
-import type { ReactElement } from "react";
-import { NavLink } from "react-router";
+import { type ReactElement, useLayoutEffect, useRef } from "react";
+import { NavLink, useLocation } from "react-router";
 
+import { createLamp, type Lamp } from "../../motion/lamp";
+import { useMotion } from "../../motion/useMotion";
 import { IndicatorsIcon, InvestigateIcon, OverviewIcon, StatusIcon } from "../hud/Icons";
 
 interface NavItem {
@@ -20,11 +22,14 @@ const NAV_ITEMS: readonly NavItem[] = [
 ];
 
 const LINK =
-  "relative flex h-full flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-center transition md:h-auto md:py-3.5";
-// The current page gets a lit edge and a tint as well as the accent colour.
-const ACTIVE =
+  "cf-glow relative flex h-full flex-col items-center justify-center gap-1.5 rounded-control px-1 py-2.5 text-center transition-colors md:h-auto md:py-3.5";
+// With effects off the current page gets a lit edge and a tint of its own, as well as the accent
+// colour. With them on, the gliding lamp (see motion/lamp.ts) draws those, and the link only
+// takes the colour.
+const ACTIVE_STILL =
   "bg-cipher/10 text-cipher before:absolute before:inset-x-3 before:top-0 before:h-0.5 before:bg-cipher before:shadow-glow md:before:inset-x-auto md:before:inset-y-3 md:before:left-0 md:before:top-auto md:before:h-auto md:before:w-0.5";
-const IDLE = "text-ink-300 hover:bg-ink-800/60 hover:text-ink-50";
+const ACTIVE_LAMP = "text-cipher";
+const IDLE = "text-ink-300 hover:bg-white/5 hover:text-ink-50";
 
 /**
  * The one primary navigation: a tab bar along the bottom of a phone, a rail down the left edge
@@ -34,31 +39,62 @@ const IDLE = "text-ink-300 hover:bg-ink-800/60 hover:text-ink-50";
  * the links inside it stick below the top bar while a long page scrolls past.
  */
 export default function NavRail() {
+  const motion = useMotion();
+  const { pathname } = useLocation();
+  const track = useRef<HTMLDivElement>(null);
+  const lampElement = useRef<HTMLSpanElement>(null);
+  const lamp = useRef<Lamp | null>(null);
+
+  useLayoutEffect(() => {
+    const container = track.current;
+    const light = lampElement.current;
+    if (!motion || container === null || light === null) return;
+    const created = createLamp(container, light);
+    created.aim(false);
+    lamp.current = created;
+    return () => {
+      created.stop();
+      lamp.current = null;
+    };
+  }, [motion]);
+
+  // The lamp glides when the page changes. The first placement (above) is immediate.
+  useLayoutEffect(() => {
+    lamp.current?.aim(true);
+  }, [pathname]);
+
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 h-16 border-t border-ink-700/80 bg-ink-950/90 backdrop-blur-md md:static md:z-auto md:h-auto md:w-24 md:flex-none md:border-r md:border-t-0"
+      className="fixed inset-x-0 bottom-0 z-30 h-16 border-t border-white/10 bg-ink-950/75 backdrop-blur-xl md:static md:z-auto md:h-auto md:w-24 md:flex-none md:border-r md:border-t-0"
     >
-      <ul className="grid h-full grid-cols-4 md:sticky md:top-14 md:block md:h-auto">
-        {NAV_ITEMS.map(({ to, label, short, end, Icon }) => (
-          <li key={to}>
-            <NavLink to={to} end={end} className={({ isActive }) => `${LINK} ${isActive ? ACTIVE : IDLE}`}>
-              <Icon className="size-6" />
-              <span className="text-[0.62rem] font-semibold uppercase leading-tight tracking-[0.12em]">
-                {short === undefined ? (
-                  label
-                ) : (
-                  <>
-                    {/* The short name is what is drawn; screen readers announce the full one. */}
-                    <span aria-hidden="true">{short}</span>
-                    <span className="sr-only">{label}</span>
-                  </>
-                )}
-              </span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+      <div ref={track} className="relative h-full md:sticky md:top-14 md:h-auto">
+        {motion ? <span ref={lampElement} aria-hidden="true" className="cf-lamp" /> : null}
+        <ul className="grid h-full grid-cols-4 md:block md:h-auto">
+          {NAV_ITEMS.map(({ to, label, short, end, Icon }) => (
+            <li key={to}>
+              <NavLink
+                to={to}
+                end={end}
+                className={({ isActive }) => `${LINK} ${isActive ? (motion ? ACTIVE_LAMP : ACTIVE_STILL) : IDLE}`}
+              >
+                <Icon className="size-6" />
+                <span className="text-[0.62rem] font-semibold uppercase leading-tight tracking-[0.12em]">
+                  {short === undefined ? (
+                    label
+                  ) : (
+                    <>
+                      {/* The short name is what is drawn; screen readers announce the full one. */}
+                      <span aria-hidden="true">{short}</span>
+                      <span className="sr-only">{label}</span>
+                    </>
+                  )}
+                </span>
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </div>
     </nav>
   );
 }

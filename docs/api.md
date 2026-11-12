@@ -56,7 +56,7 @@ problem. Submitted values are never echoed back, and server errors never expose 
 Liveness. Does not touch any dependency, so it stays green while the database is down.
 
 ```json
-{ "status": "ok", "service": "cipherforge-api", "version": "0.4.0" }
+{ "status": "ok", "service": "cipherforge-api", "version": "0.5.0" }
 ```
 
 ### `GET /ready`

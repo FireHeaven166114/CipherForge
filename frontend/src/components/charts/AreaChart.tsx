@@ -153,7 +153,7 @@ export default function AreaChart({
         onKeyDown={onKeyDown}
         onFocus={() => setActive((current) => current ?? count - 1)}
         onBlur={() => setActive(null)}
-        className="relative w-full select-none rounded-sm"
+        className="relative w-full select-none rounded-control"
       >
         <svg
           width={width}

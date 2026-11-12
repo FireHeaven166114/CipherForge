@@ -20,7 +20,7 @@ export const CLASSIFICATION_META: Record<Classification, ClassificationMeta> = {
   critical: {
     label: "Critical",
     symbol: "◆",
-    badge: "border-crit/70 bg-crit/15 text-crit",
+    badge: "border-crit/70 cf-plate text-crit",
     bar: "fill-crit",
     stroke: "stroke-crit",
     text: "text-crit",
@@ -29,7 +29,7 @@ export const CLASSIFICATION_META: Record<Classification, ClassificationMeta> = {
   high: {
     label: "High",
     symbol: "▲",
-    badge: "border-high/70 bg-high/15 text-high",
+    badge: "border-high/70 cf-plate text-high",
     bar: "fill-high",
     stroke: "stroke-high",
     text: "text-high",
@@ -38,7 +38,7 @@ export const CLASSIFICATION_META: Record<Classification, ClassificationMeta> = {
   medium: {
     label: "Medium",
     symbol: "■",
-    badge: "border-med/70 bg-med/15 text-med",
+    badge: "border-med/70 cf-plate text-med",
     bar: "fill-med",
     stroke: "stroke-med",
     text: "text-med",
@@ -47,7 +47,7 @@ export const CLASSIFICATION_META: Record<Classification, ClassificationMeta> = {
   low: {
     label: "Low",
     symbol: "●",
-    badge: "border-low/70 bg-low/15 text-low",
+    badge: "border-low/70 cf-plate text-low",
     bar: "fill-low",
     stroke: "stroke-low",
     text: "text-low",
@@ -56,7 +56,7 @@ export const CLASSIFICATION_META: Record<Classification, ClassificationMeta> = {
   informational: {
     label: "Informational",
     symbol: "○",
-    badge: "border-info/60 bg-info/10 text-info",
+    badge: "border-info/60 cf-plate text-info",
     bar: "fill-info",
     stroke: "stroke-info",
     text: "text-info",

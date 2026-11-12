@@ -1,6 +1,6 @@
 # Threat intelligence (Intel)
 
-> **Status: implemented (Phase 2, backend; Phases 3 and 3b, analyst screens).** The API looks up one
+> **Status: implemented (Phase 2, backend; Phases 3 to 3c, analyst screens).** The API looks up one
 > indicator at a time, asks AbuseIPDB and AlienVault OTX about it, stores each answer, scores the
 > indicator with a documented method and audits the lookup. The dashboard shows the result; see
 > [The analyst screens](#the-analyst-screens). The provider adapters have only been run
@@ -225,7 +225,8 @@ score, and that an absence of reports is not proof of safety.
 The dashboard is a client of the API described above. It adds no scoring logic of its own: it shows
 what the API returns, and where the API is silent it says so. See
 [architecture.md](architecture.md#frontend) for how it is built. Phase 3 built the screens; Phase 3b
-redesigned them as a dark, dense "command deck" and added the overview aggregates.
+redesigned them as a dark, dense "command deck" and added the overview aggregates; Phase 3c gave
+that deck a new look and motion ("Aurora Forge") without changing what any screen shows or does.
 
 | Screen | Route | What it does |
 | --- | --- | --- |
@@ -237,11 +238,11 @@ redesigned them as a dark, dense "command deck" and added the overview aggregate
 
 Around them, the shell offers a command palette (`/` or `Ctrl K`: go to a page, investigate or search
 for what was typed, switch effects) and "go to" shortcuts (`G` then `O`, `I`, `L` or `S`). Plain keys
-never fire while typing in a field or while a dialog is open. The effects (animated backdrop,
-numbers that count up, charts that draw themselves) can be switched off from the header and stay off
-when the system asks for reduced motion. That switch is the only thing the console keeps in the
-browser, and a lookup can never be started by a link: the palette passes the value in the history
-state, not the address.
+never fire while typing in a field or while a dialog is open. The effects (an animated background
+that reacts to the pointer, a sliding navigation lamp, staggered entrances, numbers that count up,
+charts that draw themselves) can be switched off from the header and stay off when the system asks
+for reduced motion. That switch is the only thing the console keeps in the browser, and a lookup can
+never be started by a link: the palette passes the value in the history state, not the address.
 
 Investigate and the detail page share one layout, in this order:
 
@@ -285,7 +286,7 @@ Choices that keep the evidence honest:
   (`ScorePanel.tsx`). It is shown only when the API reports that methodology, so a different method
   is never described with the wrong rules. Change a constant in the scorer and you must change that
   text too, and bump the method's name if the rules change.
-- **Provider text is shown as text.** See [security.md](security.md#frontend-controls-phases-3-and-3b).
+- **Provider text is shown as text.** See [security.md](security.md#frontend-controls-phases-3-to-3c).
 
 ## Stored data and audit
 
