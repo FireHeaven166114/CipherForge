@@ -9,9 +9,30 @@ management and client-side encrypted file sharing, built as one modular defensiv
 > It is designed for a controlled lab. Run packet capture, load generation or honeypots only on
 > systems and networks you own or are explicitly authorised to test.
 
+## A look at it
+
+The dashboard as of Phase 3c, captured from the [demo server](#try-it-without-api-keys) in Microsoft
+Edge with the Effects switch on. The data is invented and the providers are simulated, as the banner
+at the top of every screen says. Each image is one frame of a moving background.
+
+**Overview** (desktop): the headline tiles, the Threat pulse trend and the Risk posture panel, with
+the pointer light on the panel under the cursor.
+
+![The Overview screen: the navigation rail with its lamp, five headline tiles, and the Threat pulse and Risk posture panels over the aurora background](docs/screenshots/overview.png)
+
+**Investigate** (desktop): an invented indicator scored 100 (Critical) by the simulated providers,
+with the AbuseIPDB and AlienVault OTX cards under the assessment.
+
+![An investigation result: the CipherForge assessment with a risk score of 100, Critical, and a confidence of 90 out of 100, above the AbuseIPDB and AlienVault OTX cards](docs/screenshots/investigate.png)
+
+**On a phone** (390 pixels wide): the same Overview, with the navigation moved to a bottom bar.
+
+<img src="docs/screenshots/phone.png" width="320" alt="The Overview on a phone: headline tiles, with the navigation bar and its lamp along the bottom of the screen">
+
 ## Status
 
-The project is built in vertical slices, each one tested and committed before the next begins.
+The project is built in vertical slices, each one tested and committed before the next begins, and
+each phase is tagged (`v0.1.0-phase1` up to `v0.5.0-phase3c`).
 
 | Phase | Scope | Status |
 | --- | --- | --- |
@@ -19,7 +40,7 @@ The project is built in vertical slices, each one tested and committed before th
 | 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against recorded responses only, see [threat-intelligence.md](docs/threat-intelligence.md#verification-status) |
 | 3 | SOC dashboard: investigation view, IOC table and search, charts | **Done** (React dashboard for the Phase 2 API). Works against `AUTH_MODE=dev` only: there is no browser sign-in yet |
 | 3b | Command deck: a redesigned futuristic UI, the `/overview` aggregates, a demo mode with simulated providers, and an end-to-end browser test suite | **Done.** Tested against simulated providers only, see [Testing the dashboard](#testing-the-dashboard) |
-| 3c | Aurora Forge: every screen restyled as spectral glass over a layered, animated background, with a light that follows the pointer, a sliding navigation lamp and choreographed entrances, built on anime.js | **Done.** Visual only: the routes, API calls, wording and behaviour are the same as in 3b. See [Phase 3c](#what-works-today) and [Testing the dashboard](#testing-the-dashboard) |
+| 3c | Aurora Forge: every screen restyled as spectral glass over a layered, animated background, with a light that follows the pointer, a sliding navigation lamp and choreographed entrances, built on anime.js | **Done.** Visual only: the routes, API calls, wording and behaviour are the same as in 3b. See [the screenshots](#a-look-at-it), [Phase 3c](#what-works-today) and [Testing the dashboard](#testing-the-dashboard) |
 | 4-12 | Network sensor, detection, correlation, mini-SIEM, cases, Vault, integrations, Azure, DevSecOps | Not started |
 
 The roadmap follows the project specification; see [docs/architecture.md](docs/architecture.md) for
@@ -111,9 +132,10 @@ workbench, and given one aggregate endpoint to draw from:
 **Phase 3c: Aurora Forge**
 
 Every screen was restyled and given a motion layer, and nothing was added to what it does: the same
-screens, routes, API calls, wording, roles and shortcuts, and the Phase 3b browser suite is the
-regression net that proves it. (The one existing spec that changed is the contrast audit: it now
-measures against the new, lighter glass colour and hides the new decorative layers.)
+screens, routes, API calls, wording, roles and shortcuts. The Phase 3b browser suite still passes
+with one spec changed: the contrast audit now measures against the new, lighter glass colour and
+hides the new decorative layers. To see it, start the [demo](#try-it-without-api-keys) and open
+<http://127.0.0.1:5173>; the Effects switch in the header shows the page with and without the layers.
 
 - **Spectral glass.** Panels are translucent glass with a cyan, violet and magenta edge, headings
   carry a gradient, and badges and chips sit on solid plates so their text keeps its contrast
@@ -122,17 +144,19 @@ measures against the new, lighter glass colour and hides the new decorative laye
   grid slides toward you, 18 to 72 dots drift, link up and are pushed aside by the pointer (a 2D
   canvas at 30 frames a second), and a soft light follows the cursor, all under film grain and a
   vignette.
-- **Glass that catches the light.** Panels and buttons near the pointer light up where it is.
+- **Glass that catches the light.** Panels, buttons, chips and navigation links near the pointer
+  light up where it is.
 - **A navigation lamp.** A lit pill glides to the page you open, on the side rail and on the phone's
   bottom bar, and goes out on a page that has no link.
 - **Entrances.** Panels, tiles and page headers arrive in a short staggered wave, headline numbers
-  count up and headings decode letter by letter. What a screen reader reads never changes while
-  this happens, and a finished element keeps no leftover styles.
+  count up and each page's title decodes letter by letter. What a screen reader reads never changes
+  while this happens, and a finished entrance leaves no styles behind.
 - **Still optional.** All of it is behind the header's Effects switch, stays off when the system asks
   for reduced motion, and the pointer effects are skipped on touch screens.
 - **Built on [anime.js](https://animejs.com)** (MIT, version 4.5.0, pinned, no dependencies of its
-  own) with CSS and a 2D canvas: no WebGL, no `eval` and no inline styles, so the Content Security
-  Policy is unchanged. See
+  own) with CSS and a 2D canvas: no WebGL and no `eval`, and no `style=` attributes or `<style>`
+  elements in the markup (the motion layer writes styles through the CSSOM and animates with the Web
+  Animations API, both of which the policy allows), so the Content Security Policy is unchanged. See
   [docs/architecture.md](docs/architecture.md#aurora-forge-and-the-motion-layer).
 - **Where the ideas came from.** The spotlight cards, the "tubelight" navigation bar and the
   layered pointer-reactive background follow patterns seen on [21st.dev](https://21st.dev) and
@@ -362,10 +386,10 @@ secrets: they are never logged, never returned by the API and, in Compose, given
 ```text
 backend/      FastAPI service (app/, alembic/, tests/) and devtools/, the dev-only demo server
 frontend/     React + TypeScript + Vite + Tailwind single-page app, served by nginx in Docker;
-              e2e/ holds its Playwright browser tests
+              src/motion/ holds the anime.js effects, e2e/ its Playwright browser tests
 sensor/       Network sensor (placeholder, not implemented)
 infra/        Infrastructure as code (placeholder, not implemented)
-docs/         Architecture, security and deployment notes
+docs/         Architecture, security and deployment notes; screenshots/ holds the README images
 .github/      CI workflow and Dependabot configuration
 docker-compose.yml
 .env.example
