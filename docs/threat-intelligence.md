@@ -390,7 +390,7 @@ These are known and deliberate for the MVP:
   a contrast audit), layouts from a phone to a wide screen and larger text, the security headers and
   policy, hostile provider text, very long and very large values, privacy (no cookies, no third
   parties) and one investigation followed through every screen; see
-  [Testing the dashboard](../README.md#testing-the-dashboard). Because the providers are simulated,
+  [Testing the dashboard](testing.md#testing-the-dashboard). Because the providers are simulated,
   none of this shows how a real provider answers: the screens for real evidence (a High result,
   provider details, OTX pulses) are exercised with invented answers, and the live services have never
   been called.

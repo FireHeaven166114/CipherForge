@@ -403,7 +403,7 @@ that checks the effects really run (the canvas is painted and changing, the orbs
 lamp sits on the open page's link and glides to the next, a heading decodes while its accessible
 name never changes), that the switch and reduced motion remove them without replaying the page, and
 that every screen still fits the window with them on, at desktop and phone width. See
-[Testing the dashboard](../README.md#testing-the-dashboard) to run it and for what a green run does
+[Testing the dashboard](testing.md#testing-the-dashboard) to run it and for what a green run does
 not prove.
 
 ### Sign-in and routing
@@ -430,7 +430,7 @@ serves `index.html` for unknown paths so that client routes survive a reload, an
 | The overview is aggregated on the server, on every request | One `GET /intel/overview` gives the dashboard every figure from a single consistent snapshot, with bounded scans (the 2,000 most recent provider answers and 20,000 audit rows of the 14-day window) and flags when a bound cut it short. The browser never adds numbers up, so it cannot disagree with the API. The cost is a query per refresh; a busier installation would pre-aggregate or cache it. |
 | Layout follows the container, in `rem` | The rail, the padding and the user's text size change a panel's real width, so breakpoints on the window gave overlapping or clipped content. Container queries (`@split`, `@deck`) in `rem` reflow with the text size. |
 | Demo mode is dev-only code beside the app, not in it | The dashboard needs populated data to be seen and tested, and no provider keys exist. `backend/devtools` provides simulated providers and a seeded database that can only live in `backend/.demo/`; `app/` never imports it, and the Docker image excludes it. |
-| End-to-end tests run the production build against the real API | The unit tests cannot see layout, the Content Security Policy or cross-screen behaviour. The suite serves `dist/` behind nginx's own header values and talks to the real API, so a green run says something about what ships. Its limits are listed in the README. |
+| End-to-end tests run the production build against the real API | The unit tests cannot see layout, the Content Security Policy or cross-screen behaviour. The suite serves `dist/` behind nginx's own header values and talks to the real API, so a green run says something about what ships. Its limits are listed in [Testing](testing.md#what-a-green-run-does-not-show). |
 | "Not assessed" is its own state in the UI | The API reports a score of 0 with confidence 0 when no provider answered. Showing that as "low" or "informational" would read as "checked and clean", so the UI shows a distinct badge, counts it as its own group on the overview, and says that no provider answered. |
 | Exact version pins | Reproducible builds; Dependabot proposes updates and CI vets them. |
 

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 862" width="1000" height="862" role="img" aria-labelledby="svg-title svg-desc" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="svg-title">What happens when you investigate one indicator</title>
+<desc id="svg-desc">Eleven steps between the browser, the CipherForge API, the database and the providers: the browser sends the indicator; the API checks sign-in, role, rate limit and the indicator itself; it looks for fresh saved answers, asks the providers for what is missing, saves the answers, scores them, writes the audit record, and returns the result.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#38e8ff"/></marker>
+<marker id="ah-ember" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#ff8a4c"/></marker>
+</defs>
+<rect width="1000" height="862" rx="18" fill="#060a1a" stroke="#16264a"/>
+<text x="36" y="54" font-size="26" font-weight="700" fill="#f2f8ff">What happens when you investigate one indicator</text>
+<text x="36" y="82" font-size="15" fill="#93a8c0">Time runs downward. Solid arrows ask, dashed arrows answer.</text>
+<path data-kind="lifeline" d="M120,162 V794" stroke="#2a4a8a" stroke-width="1.4" stroke-dasharray="4 6" fill="none"/>
+<path data-kind="lifeline" d="M370,162 V794" stroke="#2a4a8a" stroke-width="1.4" stroke-dasharray="4 6" fill="none"/>
+<path data-kind="lifeline" d="M640,162 V794" stroke="#2a4a8a" stroke-width="1.4" stroke-dasharray="4 6" fill="none"/>
+<path data-kind="lifeline" d="M870,162 V794" stroke="#2a4a8a" stroke-width="1.4" stroke-dasharray="4 6" fill="none"/>
+<rect id="p-browser" x="40" y="108" width="160" height="54" rx="12" fill="#0c1431" stroke="#38e8ff" stroke-width="1.5"/>
+<text x="120" y="130" font-size="16" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="p-browser">Browser</text>
+<text x="120" y="150" font-size="12.5" fill="#93a8c0" text-anchor="middle" data-in="p-browser">the dashboard</text>
+<rect id="p-api" x="270" y="108" width="200" height="54" rx="12" fill="#0c1431" stroke="#38e8ff" stroke-width="1.5"/>
+<text x="370" y="130" font-size="16" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="p-api">CipherForge API</text>
+<text x="370" y="150" font-size="12.5" fill="#93a8c0" text-anchor="middle" data-in="p-api">FastAPI (Python)</text>
+<rect id="p-db" x="555" y="108" width="170" height="54" rx="12" fill="#0c1431" stroke="#4ae8b0" stroke-width="1.5"/>
+<text x="640" y="130" font-size="16" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="p-db">Database</text>
+<text x="640" y="150" font-size="12.5" fill="#93a8c0" text-anchor="middle" data-in="p-db">PostgreSQL / SQLite</text>
+<rect id="p-prov" x="780" y="108" width="180" height="54" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
+<text x="870" y="130" font-size="16" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="p-prov">Providers</text>
+<text x="870" y="150" font-size="12.5" fill="#93a8c0" text-anchor="middle" data-in="p-prov">AbuseIPDB · OTX</text>
+<circle cx="30" cy="203" r="13" fill="#38e8ff"/>
+<text x="30" y="208" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">1</text>
+<path data-kind="msg" d="M120,208 H370" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<text x="245" y="194" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Investigate 8.8.8.8</text>
+<text x="245" y="226" font-size="12" fill="#93a8c0" text-anchor="middle" class="mono" font-family="Consolas, 'SFMono-Regular', Menlo, 'Courier New', monospace" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">POST /api/v1/intel/investigate</text>
+<circle cx="30" cy="259" r="13" fill="#38e8ff"/>
+<text x="30" y="264" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">2</text>
+<rect id="note-2" x="180" y="242" width="380" height="30" rx="8" fill="#12204a" stroke="#38e8ff" stroke-width="1.2"/>
+<text x="370" y="262" font-size="14" fill="#f2f8ff" text-anchor="middle" data-in="note-2">Check your sign-in, role and rate limit</text>
+<circle cx="30" cy="315" r="13" fill="#38e8ff"/>
+<text x="30" y="320" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">3</text>
+<rect id="note-3" x="170" y="298" width="400" height="30" rx="8" fill="#12204a" stroke="#38e8ff" stroke-width="1.2"/>
+<text x="370" y="318" font-size="14" fill="#f2f8ff" text-anchor="middle" data-in="note-3">Clean up the indicator; refuse private IPs</text>
+<circle cx="30" cy="371" r="13" fill="#38e8ff"/>
+<text x="30" y="376" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">4</text>
+<path data-kind="msg" d="M370,376 H640" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<text x="505" y="362" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Any fresh saved answers?</text>
+<circle cx="30" cy="427" r="13" fill="#38e8ff"/>
+<text x="30" y="432" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">5</text>
+<path data-kind="msg" d="M640,432 H370" fill="none" stroke="#38e8ff" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<text x="505" y="418" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Fresh ones, if any</text>
+<circle cx="30" cy="483" r="13" fill="#38e8ff"/>
+<text x="30" y="488" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">6</text>
+<path data-kind="msg" d="M370,488 H870" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<text x="505" y="474" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Ask for what is missing</text>
+<text x="505" y="506" font-size="12" fill="#93a8c0" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">both at once, 10 seconds each</text>
+<circle cx="30" cy="539" r="13" fill="#38e8ff"/>
+<text x="30" y="544" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">7</text>
+<path data-kind="msg" d="M870,544 H370" fill="none" stroke="#38e8ff" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<text x="505" y="530" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Answers, or a failure</text>
+<text x="505" y="562" font-size="12" fill="#93a8c0" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">one failing never stops the other</text>
+<circle cx="30" cy="595" r="13" fill="#38e8ff"/>
+<text x="30" y="600" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">8</text>
+<path data-kind="msg" d="M370,600 H640" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<text x="505" y="586" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Save the new answers</text>
+<circle cx="30" cy="651" r="13" fill="#38e8ff"/>
+<text x="30" y="656" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">9</text>
+<rect id="note-9" x="170" y="634" width="400" height="30" rx="8" fill="#12204a" stroke="#38e8ff" stroke-width="1.2"/>
+<text x="370" y="654" font-size="14" fill="#f2f8ff" text-anchor="middle" data-in="note-9">Score: combine the evidence into 0 to 100</text>
+<circle cx="30" cy="707" r="13" fill="#38e8ff"/>
+<text x="30" y="712" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">10</text>
+<path data-kind="msg" d="M370,712 H640" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<text x="505" y="698" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">Save score and audit record</text>
+<circle cx="30" cy="763" r="13" fill="#38e8ff"/>
+<text x="30" y="768" font-size="14" font-weight="700" fill="#04050e" text-anchor="middle">11</text>
+<path data-kind="msg" d="M370,768 H120" fill="none" stroke="#38e8ff" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<text x="245" y="754" font-size="14" fill="#f2f8ff" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">The result</text>
+<text x="245" y="786" font-size="12" fill="#93a8c0" text-anchor="middle" paint-order="stroke" stroke="#060a1a" stroke-width="8" stroke-linejoin="round">assessment, answers, reasons</text>
+<text x="500" y="832" font-size="15" fill="#ffd75a" text-anchor="middle">If no provider answers, the result says “Not assessed”, never “clean”.</text>
+</svg>

@@ -111,7 +111,7 @@ jobs:
         run: npm audit --audit-level=moderate
 
   # Drives a real browser through the production build against the real API, which runs with
-  # simulated providers on a seeded throwaway database (see README, "Testing the dashboard").
+  # simulated providers on a seeded throwaway database (see docs/testing.md, "Testing the dashboard").
   # Playwright starts both servers itself. Locally it uses Edge; here CI is set, so it uses the
   # Chromium downloaded below. It is the slowest job, so it has the longest timeout.
   e2e:
