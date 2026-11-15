@@ -29,21 +29,18 @@ const HIT_HEIGHT = 26;
 // The counts beside the chart have a few characters of room, so from here on they are shortened.
 const COMPACT_FROM = 10_000;
 
-function anchorFor(angle: number): "start" | "middle" | "end" {
+type Anchor = "start" | "middle" | "end";
+
+function anchorFor(angle: number): Anchor {
   const sine = Math.sin((angle * Math.PI) / 180);
   return Math.abs(sine) < 0.2 ? "middle" : sine > 0 ? "start" : "end";
 }
 
-/** A box around a label (and the count under it) that is at least 24 pixels each way and stays in the chart. */
-function hitBox(x: number, y: number, anchor: "start" | "middle" | "end", characters: number) {
+/** A box around a label (and the count under it) that is at least 24 pixels each way. It may reach past the circle. */
+function hitBox(x: number, y: number, anchor: Anchor, characters: number) {
   const width = Math.max(32, characters * 6.5 + 8);
   const left = anchor === "start" ? x - 4 : anchor === "end" ? x + 4 - width : x - width / 2;
-  return {
-    x: roundTo(Math.min(Math.max(left, 0), WIDTH - width)),
-    y: roundTo(y - 11),
-    width: roundTo(width),
-    height: HIT_HEIGHT,
-  };
+  return { x: roundTo(left), y: roundTo(y - 11), width: roundTo(width), height: HIT_HEIGHT };
 }
 
 /** A radar of how many indicators each type has. The rings are whole-number steps from the centre. */
@@ -54,10 +51,20 @@ export default function Radar({ axes, noun, label }: RadarProps) {
   const radiusOf = (value: number) => (Math.max(0, value) / axis.top) * RADIUS;
   const rings = axis.ticks.filter((tick) => tick > 0);
   const shape = axes.map((item, index) => polar(CX, CY, radiusOf(item.value), angleOf(index)));
+  const places = axes.map((item, index) => {
+    const spot = polar(CX, CY, RADIUS + 16, angleOf(index));
+    const anchor = anchorFor(angleOf(index));
+    const x = roundTo(spot.x);
+    const y = roundTo(spot.y + 3);
+    return { item, anchor, x, y, box: hitBox(x, y, anchor, item.label.length) };
+  });
+  // The frame grows sideways until every label has room, so a long one is never cut off by its edge.
+  const left = Math.min(0, ...places.map(({ box }) => box.x));
+  const right = Math.max(WIDTH, ...places.map(({ box }) => box.x + box.width));
 
   return (
     <svg
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      viewBox={`${roundTo(left)} 0 ${roundTo(right - left)} ${HEIGHT}`}
       role="group"
       aria-label={label}
       className="mx-auto block h-auto w-full max-w-[22rem]"
@@ -109,11 +116,7 @@ export default function Radar({ axes, noun, label }: RadarProps) {
         ) : null;
       })}
 
-      {axes.map((item, index) => {
-        const spot = polar(CX, CY, RADIUS + 16, angleOf(index));
-        const anchor = anchorFor(angleOf(index));
-        const x = roundTo(spot.x);
-        const y = roundTo(spot.y + 3);
+      {places.map(({ item, anchor, x, y, box }) => {
         const name = `${item.label}: ${plural(item.value, noun)}`;
         const labelText = (
           <text x={x} y={y} textAnchor={anchor} className="fill-ink-100 text-[10px] font-semibold">
@@ -141,7 +144,6 @@ export default function Radar({ axes, noun, label }: RadarProps) {
         }
         // Only the label sits inside the link, so the words it shows are the start of its accessible name
         // (WCAG 2.5.3). The transparent box keeps the link as easy to press as the label and count together.
-        const box = hitBox(x, y, anchor, item.label.length);
         return (
           <Fragment key={item.key}>
             <Link to={item.to} aria-label={name} className="hover:[&_text]:fill-cipher">
