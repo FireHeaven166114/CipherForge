@@ -6,7 +6,7 @@ pydantic==2.14.2
 pydantic-settings==2.16.2
 SQLAlchemy==2.1.6
 alembic==1.20.1
-psycopg[binary]==3.3.7
+psycopg[binary]==3.3.8
 # httpx2 is the maintained continuation of HTTPX (Pydantic stewardship); Starlette's
 # TestClient also prefers it. Provider adapters and tests both use it.
 httpx2==2.16.0
