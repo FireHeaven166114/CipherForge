@@ -11,7 +11,7 @@ each phase is tagged (`v0.1.0-phase1` up to `v0.5.0-phase3c`).
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 1 | Foundation: FastAPI, React + TypeScript, PostgreSQL, Docker Compose, configuration, logging, auth shape | **Done.** The Docker stack itself is unverified, see [verification status](deployment.md#verification-status) |
+| 1 | Foundation: FastAPI, React + TypeScript, PostgreSQL, Docker Compose, configuration, logging, auth shape | **Done.** The Docker stack is built and smoke-tested by CI on a GitHub runner but has not been run on a personal computer, see [verification status](deployment.md#verification-status) |
 | 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against recorded responses only, see [threat-intelligence.md](threat-intelligence.md#verification-status) |
 | 3 | SOC dashboard: investigation view, IOC table and search, charts | **Done** (React dashboard for the Phase 2 API). Works against `AUTH_MODE=dev` only: there is no browser sign-in yet |
 | 3b | Command deck: a redesigned futuristic UI, the `/overview` aggregates, a demo mode with simulated providers, and an end-to-end browser test suite | **Done.** Tested against simulated providers only, see [Testing the dashboard](testing.md#testing-the-dashboard) |

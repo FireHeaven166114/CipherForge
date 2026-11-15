@@ -9,7 +9,7 @@ There are three layers (counts are for version 0.5.0):
 | Layer | Tool | Where | What it covers |
 | --- | --- | --- | --- |
 | Backend tests (867) | pytest | `backend/tests/` | The API, indicator checks, the provider collectors (run against recorded answers), the scoring function, the database and the audit log |
-| Frontend unit tests (424) | Vitest | `frontend/src/**/*.test.ts(x)` | Components, helpers and the motion layer |
+| Frontend unit tests (426) | Vitest | `frontend/src/**/*.test.ts(x)` | Components, helpers and the motion layer |
 | End-to-end tests (596) | Playwright | `frontend/e2e/` | The finished dashboard, in a real browser, against the real API |
 
 On Windows PowerShell, script execution is often disabled. Use `npm.cmd` and `npx.cmd` instead of
@@ -39,14 +39,35 @@ Python patterns, `pip-audit` and `npm audit` look for known vulnerabilities in d
 and `npm test` run the unit tests, `npm run typecheck` runs the TypeScript compiler and `npm run build`
 makes the production build.
 
+`npm run typecheck` checks three groups of files: the app and the build tooling (`npm run
+typecheck:app`) and the browser tests in `e2e/`. The Docker image has no browser tests (they are left
+out of the build context by `frontend/.dockerignore`), so the image builds with `npm run build:app`,
+which is `build` without the check on the tests.
+
 Point `TEST_DATABASE_URL` at a throwaway database: the PostgreSQL tests create and drop tables in it.
 Without it those tests are skipped, so a plain `pytest` run ends with `669 passed, 198 skipped`. With
 it, 866 pass and 1 is skipped on purpose (SQLite has no `TRUNCATE` statement).
 
 The workflow in `.github/workflows/ci.yml` has four jobs: backend, frontend, dashboard end-to-end
-(on Chromium) and a Docker build with a smoke test. The repository has no remote yet, so the
-workflow has never run; treat it as untested. See
+(on Chromium) and a Docker build with a smoke test. It runs on every push to `main`, on every pull
+request and when started by hand. See
 [Deployment: verification status](deployment.md#verification-status).
+
+### What the first run on GitHub found
+
+The workflow was written before the project had an online repository, so nothing had ever run it.
+Its first run failed two of the four jobs. Three separate problems were behind that, and none of
+them could be seen on the machine that built the project:
+
+| Job | What failed | Why | The fix |
+| --- | --- | --- | --- |
+| Docker | The frontend image would not build: `error TS18003: No inputs were found in config file '/app/tsconfig.e2e.json'`. | `npm run build` also type-checks the browser tests, but `frontend/.dockerignore` keeps `e2e/` out of the image, so that check had nothing to read. The build machine had no Docker, so nobody could see it. | The image builds with `npm run build:app`, which skips the check on the browser tests. `npm run build` is unchanged. |
+| Dashboard end-to-end | 11 layout tests failed, all at the 390 px phone width. The label "SHA-256" on the *Indicators by type* radar stuck out of its drawing by about 2 px, more than the test allows. | The label sat exactly on the chart's left edge. Chromium on Linux measures text a little wider than Edge on Windows, which pushed the first letter just outside. This was a real weakness of the chart, not only of the test. | The radar works out where every label lands and widens its drawing area when one would cross the edge. With the demo data the label now has at least 6 px to spare at every size measured. Two unit tests cover it. |
+| Dashboard end-to-end | 2 paging tests in the Indicators spec failed. | After a click on "previous page" the address changes at once, but the list is redrawn a moment later. The tests read the rows once, in between, and saw the old page. | The tests wait until the rows match what they expect (`expectShown` in `e2e/indicators.spec.ts`) instead of reading them once. |
+
+The other 583 browser tests passed on that first run, on Linux, in Chromium. After the three fixes a
+full run passed all four jobs, with every one of the 596 browser tests passing and none needing a
+retry (15.6 minutes on a GitHub runner).
 
 ## Testing the dashboard
 
@@ -73,8 +94,8 @@ npx playwright show-report                            # HTML report; failures ke
   `npx playwright install --with-deps chromium` downloads, as the CI job does. `E2E_PYTHON` names
   the Python that runs the API (default: `backend/.venv`, then `python` on the PATH).
 - The specs share one seeded database and run one after another. A complete run of the 596 tests took
-  about 37 minutes on a laptop (the 583 tests before Phase 3c took about 18), so run the spec you
-  are working on, and the whole suite before you commit.
+  about 37 minutes on a laptop (the 583 tests before Phase 3c took about 18) and about 16 minutes on a
+  GitHub runner, so run the spec you are working on, and the whole suite before you commit.
 
 | Spec | What it proves |
 | --- | --- |
@@ -99,8 +120,9 @@ exception, a failed request, an unexpected HTTP error status or a Content Securi
 
 - It uses simulated providers, so no real AbuseIPDB or OTX evidence has been through the dashboard.
 - The security specs run against a small Node server that stands in for nginx and reads its header
-  values from the real `nginx.conf`: the file is checked, nginx is not. The container images were
-  not built either.
+  values from the real `nginx.conf`: the file is checked, nginx is not. The CI `docker` job does
+  start the real nginx in its container, but it only checks that the page, the API behind nginx and
+  the Content Security Policy header are there. The browser suite does not run against it.
 - Automated checks find only part of the accessibility problems. No screen reader or other assistive
   technology was used, and the suite's contrast audit measures chart text against the flat glass
   colour, not against what the animated background shows through it. A one-off script that measured
@@ -109,5 +131,4 @@ exception, a failed request, an unexpected HTTP error status or a Content Securi
 - **Nobody has judged the look.** The checks measure contrast, layout, motion state and a quiet
   console. They cannot say whether the design is attractive or whether the motion feels right, and
   it has not been tuned on slow devices (switch the effects off there).
-- It was run in Edge on Windows. Firefox and Safari were not tried, and the CI job that runs it on
-  Chromium has not run yet.
+- It was run in Edge on Windows and, in CI, in Chromium on Linux. Firefox and Safari were not tried.

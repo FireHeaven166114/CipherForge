@@ -169,12 +169,14 @@ banner on every screen whenever any provider is simulated.
 - **The browser checks used a stand-in for nginx.** The tests serve the production build from a small
   Node server that sends the headers and policy it reads from `frontend/nginx.conf`, and further
   tests check the rest of that file as text (each header declared once, the hidden server version,
-  the body limit, compression of static files only, what is proxied). nginx and the container images
-  were not run in the build environment (see [deployment.md](deployment.md#verification-status)).
-- **One browser.** The tests ran in Microsoft Edge on Windows. CI runs them in Chromium on Linux,
-  which has not happened yet. Firefox and Safari were not tested, and no screen reader was used, so
-  the accessibility checks are automated ones: axe-core, contrast, layout and keyboard operation of
-  the shell, palette and drawers.
+  the body limit, compression of static files only, what is proxied). The browser suite never ran
+  against nginx or the container images. The CI `docker` job starts both and checks the page, the
+  API behind nginx and the policy header, nothing more (see
+  [deployment.md](deployment.md#verification-status)).
+- **Only Chromium-based browsers.** The tests ran in Microsoft Edge on Windows and, in CI, in
+  Chromium on Linux, which share one browser engine. Firefox and Safari were not tested, and no screen
+  reader was used, so the accessibility checks are automated ones: axe-core, contrast, layout and
+  keyboard operation of the shell, palette and drawers.
 - **Search text is in the address bar.** Anyone with access to the browser profile, or to a shared
   link, can see what was searched for in the Indicators list.
 - **Reads are not throttled.** The overview is computed on every request from bounded scans (the

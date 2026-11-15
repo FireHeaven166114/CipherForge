@@ -252,7 +252,7 @@ written out in full in [docs/threat-intelligence.md](docs/threat-intelligence.md
 | The dashboard: Overview, Investigate, Indicators, System status, command palette and the animated "Aurora Forge" look | **Built** |
 | Demo mode with simulated providers (for development and learning) | **Built** |
 | Microsoft Entra ID sign-in checks in the API | **Built on the API side.** The dashboard cannot sign in yet, so it works with `AUTH_MODE=dev` only |
-| Docker Compose stack and the automated build pipeline | **Written but never run** (see [Limitations](#limitations)) |
+| Docker Compose stack and the automated build pipeline | **Built and checked by GitHub's automatic checks**, but never run on the author's own computer (see [Limitations](#limitations)) |
 | Network sensor (packet capture), detection rules, correlation, alerts, cases, encrypted file sharing, background workers, Azure deployment | **Planned, not started** |
 
 The history of the project, phase by phase, is in [docs/project-status.md](docs/project-status.md).
@@ -605,9 +605,11 @@ have daily limits, so use the "Ask the providers again" option sparingly.
 **Path C.** Docker runs the database, the API and the dashboard in containers, so you do not need to
 install Python or Node. It uses PostgreSQL.
 
-> **Not tested.** Docker was not available where this project was written, so these steps have never
-> been run. The Compose file is checked against its schema and the nginx file was tried with a real
-> nginx, but the images were never built. If something fails, use Path A or B. Details:
+> **Checked by the automatic tests, not by hand.** Docker was not available where this project was
+> written, so nobody has followed these steps on a personal computer. GitHub's automatic checks do
+> build both images and start the whole stack on a Linux machine, and confirm that the page and the
+> API answer, so it is expected to work. Docker Desktop on Windows or macOS was not tried. If
+> something fails, use Path A or B. Details:
 > [docs/deployment.md](docs/deployment.md#verification-status).
 
 1. Install **Docker Desktop** and start it. Wait until it says it is running.
@@ -1321,7 +1323,7 @@ The project has three layers of automated tests (counts are for version 0.5.0):
 | Layer | Tests | Tool | What it checks |
 | --- | --- | --- | --- |
 | Backend | 867 | pytest | The API, the input checks, the provider code (run against recorded answers, never the live services), the score, the database and the audit log |
-| Frontend units | 424 | Vitest | Screens, components, helpers and the motion layer |
+| Frontend units | 426 | Vitest | Screens, components, helpers and the motion layer |
 | End to end | 596 | Playwright | The finished dashboard, in a real browser, talking to the real API |
 
 To run the first two, from the project folder.
@@ -1335,7 +1337,7 @@ cd backend
 cd ..\frontend
 npm.cmd run typecheck
 npm.cmd run lint
-npm.cmd test                              # ends with: Tests  424 passed (424)
+npm.cmd test                              # ends with: Tests  426 passed (426)
 ```
 
 macOS or Linux:
@@ -1357,15 +1359,17 @@ what to install and what each group of tests proves. The same page lists the sec
 other [quality checks](docs/testing.md#quality-checks).
 
 **What a green result shows.** At the time of writing, every backend test passes (on SQLite, and on a
-real PostgreSQL 16.2 when one is supplied), and so do all 424 frontend tests and all 596 end-to-end
+real PostgreSQL 16.2 when one is supplied), and so do all 426 frontend tests and all 596 end-to-end
 tests. That shows the code does what the tests expect. It does **not** show that the live providers
-work (the tests use recorded and simulated answers), that Docker works (it has never been run) or that
-the design looks good to a person. [What a green run does not show](docs/testing.md#what-a-green-run-does-not-show)
+work (the tests use recorded and simulated answers), that Docker Desktop works on your computer (the
+containers have only been started by the automatic checks on GitHub) or that the design looks good to
+a person. [What a green run does not show](docs/testing.md#what-a-green-run-does-not-show)
 lists the gaps.
 
-The checks also run automatically in `.github/workflows/ci.yml` (four jobs: backend, frontend,
-dashboard end-to-end and a Docker build). The project has no remote repository yet, so that workflow
-has **never run**. Treat it as untested.
+The checks also run automatically on GitHub, in `.github/workflows/ci.yml` (four jobs: backend,
+frontend, dashboard end-to-end in Chromium on Linux, and a Docker build with a smoke test). Its first
+run failed two of the four jobs. [What the first run on GitHub found](docs/testing.md#what-the-first-run-on-github-found)
+explains the three causes, all of which are fixed.
 
 ## Project layout
 
@@ -1377,7 +1381,7 @@ cipherforge/
 |-- README.md                 This guide
 |-- LICENSE                   The MIT licence
 |-- .env.example              A template for your settings (copy it to .env)
-|-- docker-compose.yml        Starts everything in Docker (written, never run)
+|-- docker-compose.yml        Starts everything in Docker (run by the automatic checks only)
 |-- .github/                  The automatic checks (ci.yml) and dependency updates
 |
 |-- backend/                  THE API: the part that does the work (Python, FastAPI)
@@ -1467,7 +1471,7 @@ behind it is in [docs/threat-model.md](docs/threat-model.md).
 | **Could CipherForge break something on its own?** | No. It reads from two providers and advises. It never blocks, isolates or changes anything. |
 | **Could the demo touch real data?** | No. Demo mode uses its own database file inside `backend/.demo/` (it refuses any other place), its providers are pretend and make no outside requests, and a banner on every screen says so. |
 | **Will the screen mislead me?** | It is designed not to. "Not assessed" never looks like "safe". Each provider is shown separately. A country on the map is labelled "Provider-reported country", never as where the attacker is. Every chart has its exact numbers as text. |
-| **Is the Docker set-up locked down?** | It is written to be: the containers run without administrator rights, drop extra Linux powers and publish ports only on `127.0.0.1`. But it has never been run (see [Limitations](#limitations)). |
+| **Is the Docker set-up locked down?** | It is written to be: the containers run without administrator rights, drop extra Linux powers and publish ports only on `127.0.0.1`. The automatic checks on GitHub start it and confirm that it answers, but they do not test each of these protections, and it has not been run on a personal computer (see [Limitations](#limitations)). |
 
 **Use it responsibly.** A score describes an *address*, not a *person*. Never treat it as proof of who
 did something or where they are. When the planned network tools arrive (packet capture, honeypots),
@@ -1508,16 +1512,19 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
   confirmed**. If one is missing or renamed, CipherForge treats it as unknown and gives a weaker
   result instead of failing. **Do one real lookup with your own keys before you rely on the output.**
   Details: [Verification status](docs/threat-intelligence.md#verification-status).
-- **Docker has never been run.** The computer used to write the project had no Docker, so the images
-  were never built and `docker-compose.yml` was never started. The nginx settings were tested with a
-  real nginx program outside Docker. If Path C fails, use Path A or B, and please report it.
+- **Docker has not been run by a person.** The computer used to write the project had no Docker. The
+  automatic checks on GitHub do build both images and start `docker-compose.yml` on a Linux machine,
+  then check that the page and the API answer, but nobody has run `docker compose up` on a personal
+  computer, and Docker Desktop on Windows or macOS was not tried. The nginx settings were also tested
+  with a real nginx program outside Docker. If Path C fails, use Path A or B, and please report it.
   Details: [Verification status](docs/deployment.md#verification-status).
-- **The automatic checks have never run.** `.github/workflows/ci.yml` is written and syntax-checked,
-  but the project has no online repository, so it has not run once.
+- **The automatic checks are new.** They ran for the first time only after the project was put
+  online, and that first run failed two of its four jobs for three reasons, all since fixed (see
+  [What the first run on GitHub found](docs/testing.md#what-the-first-run-on-github-found)).
 - **Microsoft sign-in has never been tried with a real organisation.** The token checks are tested
   with generated keys only.
-- **The browser tests ran in one browser:** Microsoft Edge on Windows. The automatic checks would use
-  Chromium on Linux. Firefox and Safari were not tested.
+- **The browser tests ran in Chromium-based browsers only:** Microsoft Edge on Windows, and Chromium
+  on Linux in the automatic checks. Firefox and Safari were not tested.
 - **Only the Windows commands were run.** The macOS and Linux versions in this guide follow the same
   steps, but nobody has run them.
 
