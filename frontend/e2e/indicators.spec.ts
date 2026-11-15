@@ -58,6 +58,14 @@ function shownValues(page: Page): Promise<string[]> {
   return page.locator("tbody th a").allTextContents();
 }
 
+/**
+ * Waits until the list shows exactly these indicators. After a click the address changes first and the
+ * rows follow, so reading them once can still see the page that was there before.
+ */
+async function expectShown(page: Page, values: readonly string[], message?: string): Promise<void> {
+  await expect.poll(() => shownValues(page), { message }).toEqual(values);
+}
+
 function valuesOf(items: readonly Indicator[]): string[] {
   return items.map((item) => item.indicator_value);
 }
@@ -98,7 +106,7 @@ test.describe("the list", () => {
 
     const table = page.getByRole("table", { name: "Indicators, sorted by most recent check" });
     await expect(table.getByRole("columnheader")).toHaveText(COLUMNS);
-    expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+    await expectShown(page, valuesOf(stored.items));
     await expect(page.getByRole("navigation", { name: "Pagination" })).toContainText(
       `Showing 1${EN_DASH}${stored.items.length} of ${stored.total}`,
     );
@@ -165,7 +173,7 @@ test.describe("filters", () => {
       await listFilters(page).type.selectOption({ label: TYPE_LABELS[type] });
       await expectAddress(page, `/indicators?type=${type}`);
       await expectFound(page, stored.total);
-      expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+      await expectShown(page, valuesOf(stored.items));
       expect(await page.locator("tbody tr td:nth-of-type(1)").allTextContents()).toEqual(
         stored.items.map(() => TYPE_LABELS[type]),
       );
@@ -188,7 +196,7 @@ test.describe("filters", () => {
       await expect(chosenClassification(page)).toHaveText(choice.label);
       await expectFound(page, stored.total);
 
-      expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+      await expectShown(page, valuesOf(stored.items));
       for (const badge of await page.locator("tbody tr td:nth-of-type(2)").allTextContents()) {
         expect(choice.badges.some((label) => badge.trim().endsWith(label)), `${badge} is one of ${choice.badges.join(", ")}`).toBe(true);
       }
@@ -203,7 +211,7 @@ test.describe("filters", () => {
     await listFilters(page).sort.selectOption({ label: "Highest risk first" });
     await expectAddress(page, "/indicators?sort=risk");
     await expect(page.getByRole("table", { name: "Indicators, sorted by highest risk" })).toBeVisible();
-    expect(await shownValues(page)).toEqual(valuesOf(byRisk.items));
+    await expectShown(page, valuesOf(byRisk.items));
 
     const scores = (await page.locator("tbody tr td:nth-of-type(3)").allTextContents()).map((text) =>
       text.trim() === EM_DASH ? 0 : Number(text.trim()),
@@ -227,7 +235,7 @@ test.describe("filters", () => {
     await search.press("Enter");
     await expectAddress(page, `/indicators?${new URLSearchParams({ q: part }).toString()}`);
     await expectFound(page, stored.total);
-    expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+    await expectShown(page, valuesOf(stored.items));
     await expect(search).toHaveValue(part);
   });
 
@@ -246,7 +254,7 @@ test.describe("filters", () => {
     await searchButton.click();
     await expectFound(page, stored.total);
     expect(requests.count).toBe(1);
-    expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+    await expectShown(page, valuesOf(stored.items));
   });
 
   test("percent and underscore in a search mean themselves, not any text", async ({ page, request }) => {
@@ -261,7 +269,7 @@ test.describe("filters", () => {
       await search.press("Enter");
       await expectAddress(page, `/indicators?${new URLSearchParams({ q: wildcard }).toString()}`);
       await expectFound(page, stored.total);
-      expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+      await expectShown(page, valuesOf(stored.items));
     }
   });
 
@@ -299,7 +307,7 @@ test.describe("filters", () => {
 
     await expectAddress(page, `/indicators?${filterQuery(part)}`);
     await expectFound(page, stored.total);
-    expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+    await expectShown(page, valuesOf(stored.items));
     await expect(reset).toBeVisible();
 
     await reset.click();
@@ -362,7 +370,7 @@ test.describe("filters", () => {
 
     await slowDone;
     await expectFound(page, domains.total);
-    expect(await shownValues(page)).toEqual(valuesOf(domains.items));
+    await expectShown(page, valuesOf(domains.items));
     await expect(listFilters(page).type).toHaveValue("domain");
   });
 });
@@ -386,20 +394,20 @@ test.describe("paging", () => {
     await next.click();
     await expectAddress(page, "/indicators?page=2");
     await expect(pagination).toContainText(`Showing 26${EN_DASH}50 of ${all.total}`);
-    expect(await shownValues(page)).toEqual(valuesOf((await fetchIndicators(request, { offset: 25 })).items));
+    await expectShown(page, valuesOf((await fetchIndicators(request, { offset: 25 })).items));
     await expect(previous).toBeEnabled();
 
     await previous.click();
     await expectAddress(page, "/indicators");
     await expectFound(page, all.total);
-    expect(await shownValues(page)).toEqual(valuesOf(all.items));
+    await expectShown(page, valuesOf(all.items));
 
     await openList(page, `?page=${pages}`);
     const last = await fetchIndicators(request, { offset: (pages - 1) * 25 });
     await expect(pagination).toContainText(`Showing ${(pages - 1) * 25 + 1}${EN_DASH}${all.total} of ${all.total}`);
     await expect(next).toBeDisabled();
     await expect(previous).toBeEnabled();
-    expect(await shownValues(page)).toEqual(valuesOf(last.items));
+    await expectShown(page, valuesOf(last.items));
     await expect(page.locator("tbody tr")).toHaveCount(all.total - (pages - 1) * 25);
   });
 
@@ -412,7 +420,7 @@ test.describe("paging", () => {
     await expectFound(page, all.total);
     await page.getByRole("button", { name: "Go to the first page" }).click();
     await expectAddress(page, "/indicators");
-    expect(await shownValues(page)).toEqual(valuesOf(all.items));
+    await expectShown(page, valuesOf(all.items));
   });
 
   test("a page number beyond what the API serves still ends in the same message", async ({ page, request }) => {
@@ -431,7 +439,7 @@ test.describe("paging", () => {
       await openList(page, `?page=${bad}`);
       await asked;
       await expectFound(page, all.total);
-      expect(await shownValues(page), `page=${bad}`).toEqual(valuesOf(all.items));
+      await expectShown(page, valuesOf(all.items), `page=${bad}`);
     }
   });
 });
@@ -461,7 +469,7 @@ test.describe("the address bar", () => {
       await expect(type.locator("option:checked")).toHaveText("IPv6");
       await expect(classification.locator("option:checked")).toHaveText("High or critical");
       await expect(sort.locator("option:checked")).toHaveText("Highest risk first");
-      expect(await shownValues(page)).toEqual(valuesOf(stored.items));
+      await expectShown(page, valuesOf(stored.items));
     }
   });
 
