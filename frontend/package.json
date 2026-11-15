@@ -8,12 +8,14 @@
   },
   "scripts": {
     "dev": "vite",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.e2e.json",
+    "typecheck:app": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "npm run typecheck:app && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
     "build": "npm run typecheck && vite build",
+    "build:app": "npm run typecheck:app && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

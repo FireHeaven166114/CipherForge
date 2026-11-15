@@ -5,7 +5,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-RUN npm run build
+# The end-to-end tests are not in the image's build context (see .dockerignore), so only the app is type-checked here.
+RUN npm run build:app
 
 # Runtime: static files and a reverse proxy to the API, as a non-root user on port 8080.
 FROM nginxinc/nginx-unprivileged:stable-alpine
