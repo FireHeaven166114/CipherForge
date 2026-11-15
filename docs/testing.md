@@ -67,7 +67,7 @@ them could be seen on the machine that built the project:
 
 The other 583 browser tests passed on that first run, on Linux, in Chromium. After the three fixes a
 full run passed all four jobs, with every one of the 596 browser tests passing and none needing a
-retry (15.6 minutes on a GitHub runner).
+retry (15 to 19 minutes on a GitHub runner).
 
 ## Testing the dashboard
 
@@ -94,8 +94,8 @@ npx playwright show-report                            # HTML report; failures ke
   `npx playwright install --with-deps chromium` downloads, as the CI job does. `E2E_PYTHON` names
   the Python that runs the API (default: `backend/.venv`, then `python` on the PATH).
 - The specs share one seeded database and run one after another. A complete run of the 596 tests took
-  about 37 minutes on a laptop (the 583 tests before Phase 3c took about 18) and about 16 minutes on a
-  GitHub runner, so run the spec you are working on, and the whole suite before you commit.
+  about 37 minutes on a laptop (the 583 tests before Phase 3c took about 18) and 15 to 19 minutes on
+  a GitHub runner, so run the spec you are working on, and the whole suite before you commit.
 
 | Spec | What it proves |
 | --- | --- |
