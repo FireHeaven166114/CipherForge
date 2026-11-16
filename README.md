@@ -1,4 +1,4 @@
-# CipherForge
+# CipherForge - Ai Enabled Advanced SOC Enigma
 
 **Intelligence. Detection. Encryption.**
 
