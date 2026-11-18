@@ -30,7 +30,8 @@ TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/test_db pyte
 
 # Frontend (from frontend/)
 npm run typecheck && npm run lint && npm test && npm run build
-npm audit --audit-level=moderate
+npm audit --omit=dev --audit-level=moderate   # the packages that ship; CI fails on a finding
+npm audit --audit-level=moderate              # everything, tools included; CI only reports (see below)
 npm run test:e2e                  # real-browser tests, see "Testing the dashboard"
 ```
 
@@ -38,6 +39,13 @@ What each one is for: `ruff` checks style and common mistakes in Python, `bandit
 Python patterns, `pip-audit` and `npm audit` look for known vulnerabilities in dependencies, `pytest`
 and `npm test` run the unit tests, `npm run typecheck` runs the TypeScript compiler and `npm run build`
 makes the production build.
+
+The frontend is audited twice. The first command looks only at the packages that end up in the
+dashboard people use, and CI fails if it finds anything. The second also looks at the tools that build
+and test the code (Vite, Vitest, ESLint). It currently reports one open advisory, in `picomatch`
+(GHSA-fc5q-39xc-vjpf), and no fixed version exists yet, so CI shows that step but does not fail on it.
+It becomes blocking again once a fix is released
+(see [Dependency management](security.md#dependency-management)).
 
 `npm run typecheck` checks three groups of files: the app and the build tooling (`npm run
 typecheck:app`) and the browser tests in `e2e/`. The Docker image has no browser tests (they are left

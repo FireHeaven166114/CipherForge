@@ -90,8 +90,10 @@ log injection.
 - Direct dependencies are exactly pinned. The frontend lockfile is committed and does not embed any
   registry mirror URLs (`omit-lockfile-registry-resolved`), so `npm ci` works anywhere.
 - CI runs ruff, bandit, `pip-audit`, `npm audit`, the full test suites, the browser end-to-end
-  suite, and builds the images. GitHub Actions are pinned to commit SHAs, workflow permissions are
-  `contents: read`, and checkout does not persist credentials.
+  suite, and builds the images. A finding in a package that ships fails the build. The frontend's
+  development tools are audited too, but that step only reports for now (see
+  [Dependency management](#dependency-management)). GitHub Actions are pinned to commit SHAs,
+  workflow permissions are `contents: read`, and checkout does not persist credentials.
 - Dependabot is configured for pip, npm, Docker, Compose and GitHub Actions.
 
 ## Implemented controls (Phase 2: threat intelligence)
@@ -220,7 +222,8 @@ Pins and the reasoning behind the non-obvious ones:
 | `httpx2` | The maintained continuation of HTTPX. Starlette's test client prefers it, and the provider adapters use it. Its request logging is silenced because it records full URLs. |
 | TypeScript 6.0.3 | The latest stable `typescript-eslint` does not support TypeScript 7 yet. Revisit when it does. |
 | anime.js 4.5.0 | The animation library behind the visual effects (Phase 3c). MIT licence, no dependencies of its own (its optional peers `three` and `@types/three` are not installed), exactly pinned, and imported from one file (`src/motion/anime.ts`), so only the parts the app uses are in the bundle. It is the only runtime dependency added in Phase 3c; `npm audit` and Dependabot cover it like the rest. Its lockfile entry carries the registry's SHA-1 integrity value, as do a little over half of the lockfile's entries. |
-| `minimatch` override (`11.0.4`) | Dev-tooling dependencies pulled in a `minimatch` version affected by a denial-of-service advisory (GHSA-g3hv-75wg-m249). The override keeps `npm audit` at zero findings. Remove it once upstream packages update. |
+| `minimatch` override (`11.0.4`) | Dev-tooling dependencies pulled in a `minimatch` version affected by a denial-of-service advisory (GHSA-g3hv-75wg-m249). The override fixed the finding. Remove it once upstream packages update. |
+| `picomatch` advisory (open) | GHSA-fc5q-39xc-vjpf (a regular-expression denial of service that needs a specially crafted glob pattern) was published on 19 October 2026 and reviewed by GitHub on 17 November 2026. It affects every released `picomatch` (4.0.7 is the newest), so nothing can be upgraded yet. All 12 packages `npm audit` flags because of it are build, lint and test tools: `picomatch`, `fdir`, `tinyglobby`, `typescript-eslint` (and its five `@typescript-eslint/*` helper packages), `vite`, `@vitejs/plugin-react` and `vitest`. None is among the 9 packages that ship in the dashboard, they only read patterns from this repository's own configuration, and they run on developer machines and in CI, not in the deployed app. So CI's blocking audit covers what ships (`npm audit --omit=dev`), and a second step audits everything but only reports. Make that step blocking again when a fixed `picomatch` is released (Dependabot will propose it). |
 | Node 24 image | The toolchain needs a recent Node (Vitest 5 requires 22.12 or newer, and `package.json` sets `engines` to 22.22 or newer); CI and the Docker build use Node 24. |
 
 Update flow: Dependabot opens a pull request, CI runs every check and the stack smoke test, and a

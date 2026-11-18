@@ -107,7 +107,16 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Dependency vulnerability audit
+      # What ships to users. A finding here fails the build.
+      - name: Dependency vulnerability audit (packages that ship)
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # Everything, including the build and test tools. Reported but not blocking for now:
+      # picomatch, which only development tools use (Vite, Vitest, ESLint), has an open advisory
+      # (GHSA-fc5q-39xc-vjpf) and no fixed version exists yet. Remove continue-on-error once one
+      # is released and the lockfile has it. See docs/security.md, "Dependency management".
+      - name: Dependency vulnerability audit (all packages, report only)
+        continue-on-error: true
         run: npm audit --audit-level=moderate
 
   # Drives a real browser through the production build against the real API, which runs with

@@ -1717,6 +1717,11 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
   undo.
 - **Two lookups of the same new indicator at the same moment** may both ask the providers and keep two
   answers.
+- **One advisory about a build tool is open, and nothing can fix it yet.** The automatic checks scan
+  the packages that end up in the dashboard (nothing found) and, separately, the tools that build and
+  test it. That second scan reports an advisory in `picomatch` (GHSA-fc5q-39xc-vjpf) that no released
+  version fixes, so for now it only reports and does not fail the build. See
+  [Dependency management](docs/security.md#dependency-management).
 - **A plain `pytest` run covers SQLite only,** so it reports 241 skipped tests. See
   [Tests and quality checks](#tests-and-quality-checks).
 
