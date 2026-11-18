@@ -9,6 +9,7 @@ import {
   makeStats,
 } from "../test/fixtures";
 import {
+  isDeleteResult,
   isIndicator,
   isIndicatorPage,
   isInvestigation,
@@ -21,6 +22,20 @@ function without(value: object, key: string): unknown {
   delete copy[key];
   return copy;
 }
+
+describe("isDeleteResult", () => {
+  it("accepts what the API reports and rejects anything else", () => {
+    const valid = { deleted: ["a"], not_found: [], observations_removed: 3 };
+    expect(isDeleteResult(valid)).toBe(true);
+    expect(isDeleteResult({ ...valid, deleted: [], observations_removed: 0 })).toBe(true);
+    for (const key of Object.keys(valid)) expect(isDeleteResult(without(valid, key))).toBe(false);
+    expect(isDeleteResult({ ...valid, deleted: "a" })).toBe(false);
+    expect(isDeleteResult({ ...valid, not_found: [1] })).toBe(false);
+    expect(isDeleteResult({ ...valid, observations_removed: -1 })).toBe(false);
+    expect(isDeleteResult({ ...valid, observations_removed: "3" })).toBe(false);
+    expect(isDeleteResult(null)).toBe(false);
+  });
+});
 
 describe("isInvestigation", () => {
   it("accepts an assessed and a not-assessed investigation", () => {

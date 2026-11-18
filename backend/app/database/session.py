@@ -16,9 +16,12 @@ logger = logging.getLogger("cipherforge.database")
 CONNECT_TIMEOUT_SECONDS = 5
 
 
-def _enable_sqlite_foreign_keys(dbapi_connection: Any, _record: Any) -> None:
+def _configure_sqlite(dbapi_connection: Any, _record: Any) -> None:
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
+    # A deleted indicator must not linger in the file: SQLite otherwise leaves the old bytes in
+    # free pages until they happen to be reused.
+    cursor.execute("PRAGMA secure_delete=ON")
     cursor.close()
 
 
@@ -37,8 +40,9 @@ def build_engine(settings: Settings) -> Engine:
         kwargs["pool_recycle"] = 1800
     engine = create_engine(url, **kwargs)
     if is_sqlite:
-        # SQLite ignores foreign keys unless asked; tests should enforce them like PostgreSQL.
-        event.listen(engine, "connect", _enable_sqlite_foreign_keys)
+        # SQLite ignores foreign keys unless asked, and keeps the bytes of deleted rows unless told
+        # to overwrite them; see _configure_sqlite.
+        event.listen(engine, "connect", _configure_sqlite)
     return engine
 
 

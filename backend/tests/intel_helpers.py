@@ -1,7 +1,7 @@
 """Test doubles for the threat-intelligence service and API."""
 
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -128,3 +128,20 @@ class ExplodingCollector(FakeOtx):
 
     def lookup(self, indicator: NormalizedIndicator) -> ProviderResult:
         raise RuntimeError("boom")
+
+
+class ActsWhenAsked(FakeOtx):
+    """A provider that runs ``action`` the first time it is asked, the way another analyst's
+    request can in the middle of an investigation (providers are asked on worker threads)."""
+
+    def __init__(
+        self, action: Callable[[], None], script: Sequence[ProviderResult | ProviderFailure] = ()
+    ) -> None:
+        super().__init__(script)
+        self._action: Callable[[], None] | None = action
+
+    def _query(self, indicator: NormalizedIndicator, api_key: str) -> ProviderResult:
+        action, self._action = self._action, None
+        if action is not None:
+            action()
+        return super()._query(indicator, api_key)

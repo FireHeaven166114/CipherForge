@@ -151,7 +151,11 @@ designed with the feature that needs it.
 SQLAlchemy 2 with Alembic. Constraint names follow a naming convention so migrations stay
 deterministic. Two migrations exist: `0001` (the baseline) and `0002_threat_intel`, which adds
 `threat_sources`, `threat_indicators`, `threat_observations` and `audit_logs`. The audit table is
-append-only: triggers on SQLite and PostgreSQL reject `UPDATE` and `DELETE`. Unit tests run on
+append-only: triggers on SQLite and PostgreSQL reject `UPDATE` and `DELETE`. Deleting an indicator
+(`services/intel_service.py`) removes its observations and the indicator in one transaction that
+also adds an `IOC_DELETE` audit row for each one, so the audit rows stay and are never touched. On
+SQLite every connection turns on `foreign_keys` and `secure_delete` (`database/session.py`). Unit
+tests run on
 SQLite and, when `TEST_DATABASE_URL` is set, again on PostgreSQL (the same tests, parametrised),
 including upgrade, downgrade and upgrade again on the real engine. Production requires PostgreSQL.
 
@@ -174,8 +178,8 @@ where it is silent, say so.
 | --- | --- | --- |
 | `/` | Overview (the command deck) | `GET /intel/overview`, asked again every minute while the tab is visible |
 | `/investigate` | Investigate an indicator | `POST /intel/investigate` |
-| `/indicators` | Search, filter and page the stored indicators. The filters live in the query string. | `GET /intel/indicators` |
-| `/indicators/:indicatorId` | The stored record, with a re-check button | `GET /intel/indicators/{id}`, `POST /intel/investigate` |
+| `/indicators` | Search, filter and page the stored indicators, and delete them: tick rows (Shift-click ticks a range) or use a row's bin button, then confirm. The filters live in the query string. | `GET /intel/indicators`, `DELETE /intel/indicators/{id}`, `POST /intel/indicators/bulk-delete` |
+| `/indicators/:indicatorId` | The stored record, with a re-check button and a delete button | `GET /intel/indicators/{id}`, `POST /intel/investigate`, `DELETE /intel/indicators/{id}` |
 | `/status` | API and database health | `GET /health`, `GET /ready` |
 | `*` | Page not found | none |
 
@@ -195,12 +199,12 @@ components/shell/    top bar, navigation rail (with the lamp), command palette, 
 components/hud/      the visual language: Panel, PageHeader, StatusLed, AnimatedNumber, DecodeText, CipherWheel, Overlay
 components/charts/   hand-built SVG charts (area, ring, radar, dot map, heat grids, ranked bars, sparkline, gauge)
 components/overview/ the overview's tiles, drawer, lists and panels
-components/intel/    the investigation view: verdict, one card per provider, score, internal evidence
+components/intel/    the investigation view: verdict, one card per provider, score, internal evidence; the indicator table and the delete dialog
 components/status/   the shared service check and the status page's "reactor" graphic
 effects/             the visual-effects switch (EffectsProvider, useEffects)
 motion/              the anime.js motion layer: atmosphere, particle field, pointer light, entrances, navigation lamp
 features/            domain logic with no React (labels, formatting, filters, links, summaries, map data)
-hooks/               stateful logic (useApiResource, useLiveResource, useInvestigate, useServiceStatus, ...)
+hooks/               stateful logic (useApiResource, useLiveResource, useInvestigate, useRowSelection, useDeleteIndicators, useServiceStatus, ...)
 services/            the API client, per-resource services and the runtime response checks
 types/               API types mirroring the backend schemas
 e2e/                 the Playwright browser tests (not part of the built app)

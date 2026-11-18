@@ -49,7 +49,7 @@ export function setTokenProvider(provider: TokenProvider | null): void {
 }
 
 export interface RequestOptions<T> {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "DELETE";
   body?: unknown;
   /** Cancels the request; the original AbortError is rethrown untouched. */
   signal?: AbortSignal;

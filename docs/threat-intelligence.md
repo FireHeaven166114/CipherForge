@@ -232,8 +232,8 @@ that deck a new look and motion ("Aurora Forge") without changing what any scree
 | --- | --- | --- |
 | Overview | `/` | The command deck, drawn from one `GET /intel/overview`: five headline figures (indicators tracked, lookups, high-risk, critical, not assessed; the first two also show their change on the previous 24 hours); a 14-day lookup trend; indicators by risk band, by type and by type and band; an hourly activity grid; a map and ranked lists of the countries the providers report, malware families, ATT&CK techniques and provider tags, each of which opens a drawer with the indicators behind it; the providers; the highest-risk and latest indicators; and the platform modules, with the unbuilt ones marked Planned. It refreshes itself every minute while the tab is visible. |
 | Investigate | `/investigate` | One field and an option to ask the providers again. It warns that the indicator is sent to each configured provider, checks only that the field is not empty and not longer than 2048 characters, and leaves everything else, including the refusal of non-public targets, to the server, whose reason it shows. |
-| Indicators | `/indicators` | Search (at most 256 characters), filter by type and by risk (one band, High and Critical together, or Not assessed), sort by recent check or by risk, and page through the results. The filters are kept in the address, so a view can be bookmarked and Back works. |
-| Indicator details | `/indicators/<id>` | The stored record, read without calling a provider, with a button that re-checks it. The id is checked as a UUID before any request is made. |
+| Indicators | `/indicators` | Search (at most 256 characters), filter by type and by risk (one band, High and Critical together, or Not assessed), sort by recent check or by risk, and page through the results. The filters are kept in the address, so a view can be bookmarked and Back works. It is also where stored indicators are deleted: tick rows (the box in the header ticks the page, Shift-click ticks a range) or press a row's bin button, then confirm in a dialog that names what will go. Ticks never outlive the page and filters they were made on. |
+| Indicator details | `/indicators/<id>` | The stored record, read without calling a provider, with a button that re-checks it and a button that deletes it (after the same confirmation). The id is checked as a UUID before any request is made. |
 | System status | `/status` | Whether the API is up and its database reachable, from `/health` and `/ready`. |
 
 Around them, the shell offers a command palette (`/` or `Ctrl K`: go to a page, investigate or search
@@ -294,8 +294,8 @@ Choices that keep the evidence honest:
 | --- | --- |
 | `threat_sources` | One row per provider (`abuseipdb`, `otx`), created automatically the first time that provider is used. |
 | `threat_indicators` | One row per normalised indicator (unique on type and value): risk score, confidence, first and last seen, source count, tags, status, and a snapshot of the score breakdown. The band is derived from the score. |
-| `threat_observations` | One row per provider answer, with its signal, evidence dates, fetch time and the whitelisted summary. Cascades when the indicator is deleted. |
-| `audit_logs` | One row per investigation: who, when, from which address, what, and the outcome. |
+| `threat_observations` | One row per provider answer, with its signal, evidence dates, fetch time and the whitelisted summary. Removed together with its indicator when the indicator is deleted. |
+| `audit_logs` | One row per investigation and one per indicator deleted: who, when, from which address, what, and the outcome. |
 
 Each lookup is audited as `IOC_LOOKUP` with the result `success`, `partial` (a provider was queried and
 failed) or `rejected` (input refused, with no target recorded). The audit row is committed together
@@ -305,13 +305,35 @@ IP address, and a small details object: whether a refresh was requested, each pr
 whether its answer came from the cache, and the resulting score and band (for a rejected lookup, the
 fixed reason text). API keys and provider payloads are never written to it. Database triggers reject
 `UPDATE` and `DELETE` on the table, on both SQLite and PostgreSQL. Reading a stored indicator is not
-audited: only lookups are.
+audited: only lookups and deletions are.
+
+### Deleting indicators
+
+An analyst can delete stored indicators (`DELETE /api/v1/intel/indicators/{id}` for one,
+`POST /api/v1/intel/indicators/bulk-delete` for up to 100; see [api.md](api.md)). The request names
+exact ids: there is no "delete everything matching these filters".
+
+- **What goes:** the indicator and every provider answer stored for it, in one transaction. The
+  indicator disappears at once from the Indicators list, the overview's top-risk and latest lists
+  and its indicator counts, and its detail page answers "not found".
+- **What stays:** the audit trail. It is append-only, so each deleted indicator adds one `IOC_DELETE`
+  row (who deleted it, when, from which address, and how many provider answers went with it) and
+  the earlier `IOC_LOOKUP` rows are left as they were. Both name the indicator's `type:value`, so
+  **a deleted value can still be read in the audit rows**; there is deliberately no feature to
+  delete them. The overview's lookup counts come from those rows, so they do not drop.
+- **Ids that are already gone** (another analyst deleted them a moment ago) are reported as
+  `not_found` and are not an error, so repeating a request is harmless.
+- **A lookup in flight** when its indicator is deleted is discarded: it answers `409`, and its audit
+  row says the result was discarded. It never brings the indicator back. Investigating the value
+  again later creates a new record, with a new id and no history.
+- **There is no undo.** Nothing is kept aside, so a deleted indicator can only come back from a
+  database backup.
 
 ## Security properties
 
 | Property | How |
 | --- | --- |
-| Authorisation | Every Intel route requires `SecurityAnalyst` or `Admin`. Authorisation runs before the rate limiter, so a caller who is not allowed in never uses up anyone's budget. |
+| Authorisation | Every Intel route, deletion included, requires `SecurityAnalyst` or `Admin`. Authorisation runs before the rate limiter, so a caller who is not allowed in never uses up anyone's budget. |
 | Rate limiting | 30 investigations a minute for each user (`INVESTIGATE_RATE_LIMIT_PER_MINUTE`), as a sliding window, answered with `429` and `Retry-After`. Rejected input uses budget too. |
 | No server-side request forgery | The backend only ever contacts two fixed provider hosts. Analyst input appears in a request only as an escaped path segment or query value, and non-public addresses and names are refused before any call. Redirects are not followed. |
 | Bounded provider calls | A connect timeout of 5 seconds and an overall timeout (`PROVIDER_TIMEOUT_SECONDS`, default 10), a 2 MiB response cap, and a small connection pool. A provider that hangs degrades to an `error` result. |

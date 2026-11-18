@@ -99,6 +99,16 @@ export interface IndicatorPage {
   offset: number;
 }
 
+/** What the API reports after a deletion. */
+export interface DeleteResult {
+  /** The indicators that were removed. */
+  deleted: string[];
+  /** Asked for but not stored, usually because they were deleted already. */
+  not_found: string[];
+  /** Provider answers removed along with the indicators. */
+  observations_removed: number;
+}
+
 export interface ProviderInfo {
   name: string;
   display_name: string;

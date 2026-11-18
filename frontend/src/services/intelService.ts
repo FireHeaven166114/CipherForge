@@ -1,6 +1,19 @@
-import type { IndicatorPage, IndicatorQuery, Investigation, Overview, Stats } from "../types/intel";
-import { request } from "./apiClient";
-import { isIndicatorPage, isInvestigation, isOverview, isStats } from "./intelGuards";
+import type {
+  DeleteResult,
+  IndicatorPage,
+  IndicatorQuery,
+  Investigation,
+  Overview,
+  Stats,
+} from "../types/intel";
+import { ApiError, request } from "./apiClient";
+import {
+  isDeleteResult,
+  isIndicatorPage,
+  isInvestigation,
+  isOverview,
+  isStats,
+} from "./intelGuards";
 
 const BASE = "/api/v1/intel";
 
@@ -61,4 +74,47 @@ export function getStats(signal?: AbortSignal): Promise<Stats> {
 /** Everything the Overview page shows, aggregated by the server in one read-only call. */
 export function getOverview(signal?: AbortSignal): Promise<Overview> {
   return request(`${BASE}/overview`, { signal, guard: isOverview });
+}
+
+/** Removes one stored indicator and every provider answer kept for it. This cannot be undone. */
+export function deleteIndicator(indicatorId: string, signal?: AbortSignal): Promise<DeleteResult> {
+  return request(`${BASE}/indicators/${encodeURIComponent(indicatorId)}`, {
+    method: "DELETE",
+    signal,
+    guard: isDeleteResult,
+  });
+}
+
+/** Removes several indicators in one request. The API takes at most 100; a page of the list holds 25. */
+export function deleteIndicators(
+  indicatorIds: readonly string[],
+  signal?: AbortSignal,
+): Promise<DeleteResult> {
+  return request(`${BASE}/indicators/bulk-delete`, {
+    method: "POST",
+    body: { indicator_ids: indicatorIds },
+    signal,
+    guard: isDeleteResult,
+  });
+}
+
+/**
+ * Deletes what the analyst picked: one indicator through its own address, several in one request.
+ * An indicator that is already gone is reported as such rather than as a failure, because it is
+ * the state the analyst asked for.
+ */
+export async function deleteSelected(
+  indicatorIds: readonly string[],
+  signal?: AbortSignal,
+): Promise<DeleteResult> {
+  const [only] = indicatorIds;
+  if (indicatorIds.length !== 1 || only === undefined) return deleteIndicators(indicatorIds, signal);
+  try {
+    return await deleteIndicator(only, signal);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return { deleted: [], not_found: [only], observations_removed: 0 };
+    }
+    throw error;
+  }
 }

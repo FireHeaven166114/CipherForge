@@ -4,6 +4,7 @@ import type { APIRequestContext, Page } from "@playwright/test";
 
 import type {
   Classification,
+  DeleteResult,
   Indicator,
   IndicatorPage,
   IndicatorType,
@@ -125,11 +126,46 @@ export async function storedIndicator(request: APIRequestContext, value: string)
   return found;
 }
 
-/** Counts the requests the page makes from now on whose URL matches the pattern. */
-export function countRequests(page: Page, pattern: RegExp): { readonly count: number } {
+/** Deletes indicators the way a script would, to set a test up or to clear up after it. */
+export async function deleteViaApi(request: APIRequestContext, ids: readonly string[]): Promise<DeleteResult> {
+  const response = await request.post("/api/v1/intel/indicators/bulk-delete", { data: { indicator_ids: ids } });
+  if (!response.ok()) throw new Error(`POST bulk-delete answered ${response.status()}`);
+  return (await response.json()) as DeleteResult;
+}
+
+/** New domain indicators that share a search text, so searching for it finds exactly them. */
+export interface SeededIndicators {
+  search: string;
+  items: Indicator[];
+}
+
+/** Stores `count` new domain indicators, none of which any earlier run, test or seed can have used. */
+export async function seedIndicators(request: APIRequestContext, count: number): Promise<SeededIndicators> {
+  const search = `e2e-del-${uniqueSuffix()}-`;
+  const items: Indicator[] = [];
+  for (let number = 1; number <= count; number += 1) {
+    items.push((await investigateViaApi(request, `${search}${number}.example.net`)).indicator);
+  }
+  return { search, items };
+}
+
+/** Deletes every indicator whose value contains the text, so a test leaves the shared database as it found it. */
+export async function purgeIndicators(request: APIRequestContext, search: string): Promise<void> {
+  for (let round = 0; round < 10; round += 1) {
+    const found = await fetchIndicators(request, { q: search, limit: 100 });
+    if (found.items.length === 0) return;
+    await deleteViaApi(
+      request,
+      found.items.map((item) => item.indicator_id),
+    );
+  }
+}
+
+/** Counts the requests the page makes from now on whose URL matches the pattern (and, if given, the method). */
+export function countRequests(page: Page, pattern: RegExp, method?: string): { readonly count: number } {
   const counter = { count: 0 };
   page.on("request", (request) => {
-    if (pattern.test(request.url())) counter.count += 1;
+    if (pattern.test(request.url()) && (method === undefined || request.method() === method)) counter.count += 1;
   });
   return counter;
 }

@@ -9,12 +9,114 @@ import {
   makeStats,
 } from "../test/fixtures";
 import {
+  deleteIndicator,
+  deleteIndicators,
+  deleteSelected,
   getIndicator,
   getOverview,
   getStats,
   investigateIndicator,
   listIndicators,
 } from "./intelService";
+
+const OTHER_ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+
+function notFound() {
+  return jsonResponse(
+    { error: { code: "not_found", message: "Indicator not found." } },
+    { status: 404 },
+  );
+}
+
+describe("deleteIndicator", () => {
+  it("sends DELETE to the indicator's own address, with no body, and returns what was removed", async () => {
+    const result = { deleted: [INDICATOR_ID], not_found: [], observations_removed: 2 };
+    const fetchMock = stubFetch(() => jsonResponse(result));
+
+    await expect(deleteIndicator(INDICATOR_ID)).resolves.toEqual(result);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`/api/v1/intel/indicators/${INDICATOR_ID}`);
+    expect(init?.method).toBe("DELETE");
+    expect(init?.body).toBeUndefined();
+  });
+
+  it("encodes the id so it can never change the path", async () => {
+    const fetchMock = stubFetch(() =>
+      jsonResponse({ deleted: [], not_found: [], observations_removed: 0 }),
+    );
+
+    await deleteIndicator("../stats?x=1");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/intel/indicators/..%2Fstats%3Fx%3D1");
+  });
+
+  it("reports a response that is not a deletion result as invalid", async () => {
+    stubFetch(() => jsonResponse({ deleted: "yes" }));
+
+    await expect(deleteIndicator(INDICATOR_ID)).rejects.toMatchObject({ code: "invalid_response" });
+  });
+});
+
+describe("deleteIndicators", () => {
+  it("posts the ids to the bulk address", async () => {
+    const result = { deleted: [INDICATOR_ID, OTHER_ID], not_found: [], observations_removed: 5 };
+    const fetchMock = stubFetch(() => jsonResponse(result));
+
+    await expect(deleteIndicators([INDICATOR_ID, OTHER_ID])).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/intel/indicators/bulk-delete",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ indicator_ids: [INDICATOR_ID, OTHER_ID] }),
+      }),
+    );
+  });
+});
+
+describe("deleteSelected", () => {
+  it("deletes a single indicator through its own address", async () => {
+    const fetchMock = stubFetch(() =>
+      jsonResponse({ deleted: [INDICATOR_ID], not_found: [], observations_removed: 1 }),
+    );
+
+    await deleteSelected([INDICATOR_ID]);
+
+    expect(fetchMock.mock.calls).toHaveLength(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/v1/intel/indicators/${INDICATOR_ID}`);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("DELETE");
+  });
+
+  it("deletes several in one request", async () => {
+    const fetchMock = stubFetch(() =>
+      jsonResponse({ deleted: [INDICATOR_ID, OTHER_ID], not_found: [], observations_removed: 0 }),
+    );
+
+    await deleteSelected([INDICATOR_ID, OTHER_ID]);
+
+    expect(fetchMock.mock.calls).toHaveLength(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/intel/indicators/bulk-delete");
+  });
+
+  it("treats a single indicator that is already gone as a result, not a failure", async () => {
+    stubFetch(notFound);
+
+    await expect(deleteSelected([INDICATOR_ID])).resolves.toEqual({
+      deleted: [],
+      not_found: [INDICATOR_ID],
+      observations_removed: 0,
+    });
+  });
+
+  it("still fails on any other error", async () => {
+    stubFetch(() =>
+      jsonResponse({ error: { code: "internal_error", message: "Failed." } }, { status: 500 }),
+    );
+
+    await expect(deleteSelected([INDICATOR_ID])).rejects.toMatchObject({ status: 500 });
+  });
+});
 
 describe("investigateIndicator", () => {
   it("posts the indicator and the refresh flag as JSON and returns the investigation", async () => {

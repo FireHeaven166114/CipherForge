@@ -13,6 +13,7 @@ import logging
 import math
 import time
 import uuid
+from collections import Counter
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -21,10 +22,12 @@ from typing import Any, Literal
 
 import httpx2
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, delete, func, or_, select
 from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.collectors.base import Collector, ProviderResult, ProviderStatus
 from app.correlation.scoring import (
@@ -42,6 +45,7 @@ from app.models.enums import IndicatorStatus, IndicatorType
 from app.models.threat import ThreatIndicator, ThreatObservation, ThreatSource
 from app.models.types import utcnow
 from app.schemas.intel import (
+    DeleteIndicatorsResponse,
     IndicatorOut,
     IndicatorPage,
     InternalEvidenceOut,
@@ -54,6 +58,7 @@ from app.schemas.intel import (
     StatsResponse,
 )
 from app.services.audit import (
+    IOC_DELETE,
     IOC_LOOKUP,
     RESULT_PARTIAL,
     RESULT_REJECTED,
@@ -99,6 +104,13 @@ class RequestContext:
 
     actor: str
     source_ip: str | None = None
+
+
+class IndicatorDeletedError(Exception):
+    """The indicator was deleted while its investigation was waiting on the providers.
+
+    The answers are discarded rather than bringing back something that was just deleted.
+    """
 
 
 @dataclass(slots=True)
@@ -164,6 +176,8 @@ class IntelService:
 
         The caller's session is committed. A lookup is audited whatever happens to it: success,
         partial (a provider failed) or rejected (the input was not a valid indicator).
+        :class:`IndicatorDeletedError` is raised, after the lookup is audited, if another request
+        deleted the indicator while the providers were being asked.
         """
         started = time.perf_counter()
         now = self._clock()
@@ -184,6 +198,7 @@ class IntelService:
             raise
 
         indicator = self._get_or_create_indicator(session, normalized, now)
+        indicator_id = indicator.id
         source_ids = self._source_ids(session, create=True)
         runs = [
             self._plan(session, collector, indicator.id, source_ids, normalized, now, refresh)
@@ -223,7 +238,27 @@ class IntelService:
             },
             timestamp=now,
         )
-        session.commit()
+        try:
+            session.commit()
+        except (IntegrityError, StaleDataError):
+            # Another request may have deleted the indicator while the providers were being
+            # asked: its row is gone, so these answers have nothing to attach to.
+            session.rollback()
+            if _indicator_exists(session, indicator_id):
+                raise
+            record_audit(
+                session,
+                actor=context.actor,
+                action=IOC_LOOKUP,
+                result=RESULT_PARTIAL,
+                target=normalized.target,
+                source_ip=context.source_ip,
+                details={"refresh": refresh, "discarded": "indicator_deleted"},
+                timestamp=now,
+            )
+            session.commit()
+            logger.info("investigation_discarded", extra={"reason": "indicator_deleted"})
+            raise IndicatorDeletedError from None
 
         # The indicator value is deliberately absent: the audit table is where it is recorded.
         logger.info(
@@ -493,6 +528,72 @@ class IntelService:
             session, now=self._clock(), providers=self.providers(), indicator_out=_indicator_out
         )
 
+    # --- Delete ------------------------------------------------------------------------------
+
+    def delete_indicators(
+        self, session: Session, context: RequestContext, indicator_ids: Sequence[uuid.UUID]
+    ) -> DeleteIndicatorsResponse:
+        """Delete stored indicators together with the provider answers kept for them.
+
+        An id that matches nothing is reported in ``not_found`` instead of failing the request,
+        so repeating a request, or racing another analyst, does no harm. Every deleted indicator
+        is audited with a row of its own, committed together with the deletion. The audit trail
+        is append-only and is never touched: it keeps its record of the indicator's lookups.
+        """
+        ids = list(dict.fromkeys(indicator_ids))
+        now = self._clock()
+
+        # The answers go first so that each audit row can say how many went with its indicator;
+        # the foreign key would cascade them anyway. RETURNING names what this statement removed
+        # (not what a separate read saw), so a concurrent deletion is never counted twice.
+        answers_removed = Counter(
+            session.scalars(
+                delete(ThreatObservation)
+                .where(ThreatObservation.indicator_id.in_(ids))
+                .returning(ThreatObservation.indicator_id)
+                .execution_options(synchronize_session=False)
+            )
+        )
+        removed = session.execute(
+            delete(ThreatIndicator)
+            .where(ThreatIndicator.id.in_(ids))
+            .returning(
+                ThreatIndicator.id, ThreatIndicator.indicator_type, ThreatIndicator.indicator_value
+            )
+            .execution_options(synchronize_session=False)
+        ).all()
+
+        for row in removed:
+            target = NormalizedIndicator(IndicatorType(row.indicator_type), row.indicator_value)
+            record_audit(
+                session,
+                actor=context.actor,
+                action=IOC_DELETE,
+                result=RESULT_SUCCESS,
+                target=target.target,
+                source_ip=context.source_ip,
+                details={"observations_removed": answers_removed[row.id]},
+                timestamp=now,
+            )
+        session.commit()
+
+        deleted_ids = {row.id for row in removed}
+        response = DeleteIndicatorsResponse(
+            deleted=[item for item in ids if item in deleted_ids],
+            not_found=[item for item in ids if item not in deleted_ids],
+            observations_removed=sum(answers_removed.values()),
+        )
+        # Counts only: indicator values are recorded in the audit table, never in the logs.
+        logger.info(
+            "indicators_deleted",
+            extra={
+                "deleted": len(response.deleted),
+                "not_found": len(response.not_found),
+                "observations_removed": response.observations_removed,
+            },
+        )
+        return response
+
 
 # --- Persistence helpers --------------------------------------------------------------
 
@@ -519,6 +620,11 @@ def _source_rows(session: Session, names: list[str]) -> dict[str, int]:
         select(ThreatSource.name, ThreatSource.id).where(ThreatSource.name.in_(names))
     )
     return {row.name: row.id for row in rows}
+
+
+def _indicator_exists(session: Session, indicator_id: uuid.UUID) -> bool:
+    found = session.scalar(select(ThreatIndicator.id).where(ThreatIndicator.id == indicator_id))
+    return found is not None
 
 
 def _latest_observation(

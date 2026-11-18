@@ -15,6 +15,7 @@ from typing import Any, get_args
 import httpx2
 import pytest
 from sqlalchemy import Engine, event, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.collectors.base import Collector, ProviderStatus
@@ -778,6 +779,59 @@ def test_an_indicator_without_a_usable_snapshot_is_scored_on_the_fly_and_nothing
     assert persisted.score_detail == snapshot
     assert count(session_factory, ThreatSource) == 0
     assert count(session_factory, ThreatObservation) == 0
+
+
+# --- Deleting ---------------------------------------------------------------------------
+
+
+def test_a_deletion_that_cannot_be_audited_does_not_happen(
+    session: Session,
+    session_factory: sessionmaker[Session],
+    clock: Clock,
+    build_service: ServiceFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = build_service(strong_abuse(clock), FakeOtx())
+    investigated = service.investigate(session, CONTEXT, IP)
+
+    def refuse(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("the audit trail is unavailable")
+
+    monkeypatch.setattr(intel_service, "record_audit", refuse)
+    with pytest.raises(RuntimeError, match="audit trail"):
+        service.delete_indicators(session, CONTEXT, [investigated.indicator.indicator_id])
+    session.rollback()  # what ending the request does
+
+    # An action and its audit record succeed or fail as one: refusing is better than deleting
+    # without a record.
+    assert count(session_factory, ThreatIndicator) == 1
+    assert count(session_factory, ThreatObservation) == 2
+
+
+def test_a_failure_that_is_not_a_deletion_is_not_reported_as_one(
+    session: Session,
+    session_factory: sessionmaker[Session],
+    clock: Clock,
+    build_service: ServiceFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = build_service(strong_abuse(clock), FakeOtx())
+    commit = session.commit
+    calls: list[None] = []
+
+    def fail_when_storing_the_answers() -> None:
+        calls.append(None)
+        if len(calls) == 2:  # the first commit is the one before the providers are asked
+            raise IntegrityError("INSERT", {}, Exception("some other constraint"))
+        commit()
+
+    monkeypatch.setattr(session, "commit", fail_when_storing_the_answers)
+
+    # The indicator is still there, so the error is a real one and must not be turned into the
+    # "deleted while it was being investigated" conflict.
+    with pytest.raises(IntegrityError):
+        service.investigate(session, CONTEXT, IP)
+    assert count(session_factory, ThreatIndicator) == 1
 
 
 # --- Listing and statistics ---------------------------------------------------------------

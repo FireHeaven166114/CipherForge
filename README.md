@@ -30,6 +30,7 @@ check. You use it in your web browser.
 3. [How it works](#how-it-works): [the big picture](#the-big-picture),
    [one investigation, step by step](#what-happens-when-you-investigate-something),
    [how the score is made](#how-the-score-is-made),
+   [what happens when you delete an indicator](#what-happens-when-you-delete-an-indicator),
    [what is built and what is planned](#what-is-built-and-what-is-planned)
 4. [What you need before you start](#what-you-need-before-you-start)
 5. [Get it running](#get-it-running): [open a terminal](#open-a-terminal-in-the-project-folder),
@@ -37,7 +38,8 @@ check. You use it in your web browser.
    [run the real application](#run-the-real-application),
    [run everything in Docker](#run-everything-in-docker),
    [stop it and start it again](#stop-it-and-start-it-again)
-6. [Using the dashboard](#using-the-dashboard)
+6. [Using the dashboard](#using-the-dashboard), including
+   [deleting indicators](#deleting-indicators)
 7. [Using the API directly](#using-the-api-directly)
 8. [Settings](#settings)
 9. [When something goes wrong](#when-something-goes-wrong)
@@ -65,6 +67,8 @@ websites do not always agree.
 5. It lists **what is not known** and suggests **next steps**.
 6. It **saves** the result so you can search it later, and writes a permanent entry in an
    **audit log**.
+7. When you no longer want an indicator, you can **delete** it, one at a time or a whole range at
+   once. The audit log keeps a note that you did.
 
 ### The four screens
 
@@ -72,7 +76,7 @@ websites do not always agree.
 | --- | --- |
 | **Overview** | The home screen. Live figures: how many indicators you have checked, how many look risky, a world map, trends and the latest lookups. |
 | **Investigate** | Where you type in an indicator and read the result. |
-| **Indicators** | A searchable list of everything you have checked, with a page for each one. |
+| **Indicators** | A searchable list of everything you have checked, with a page for each one. This is also where you delete indicators you no longer want. |
 | **System status** | Shows whether the API is running and can reach its database. |
 
 ### What it is not
@@ -109,7 +113,7 @@ will see this wording all over the dashboard.
 | **Confidence** | How much fresh evidence stands behind the score. It is **not** the chance that the indicator is bad. |
 | **Not assessed** | No provider answered, so nothing can be said. It is not the same as safe. |
 | **Cache** | Saved answers that CipherForge reuses for a few hours, so it does not ask the providers again and again and use up your daily allowance. |
-| **Audit log** | A permanent diary of every check: what, when and by whom. Entries cannot be edited or deleted. |
+| **Audit log** | A permanent diary of every check and every deletion: what, when and by whom. Entries cannot be edited or deleted. |
 | **Demo mode** | A special way to start CipherForge with made-up data and pretend ("simulated") providers, so you can explore without any keys. |
 | **API** | The part of CipherForge that does the work. The dashboard and other programs talk to it. |
 | **Dashboard** | The web pages you see in your browser. They show what the API sends them. |
@@ -137,8 +141,8 @@ arrow is a question or an answer. The API is the only part that talks to outside
 | **2. The web server** | Serves the dashboard pages and passes requests for data on to the API. While you are trying things it is **Vite** (port 5173). In Docker it is **nginx** (port 3000). | `frontend/` (`vite.config.ts`, `nginx.conf`) |
 | **3a. Gatekeeper** | Checks who you are (a sign-in token and a role) and how many lookups you have made this minute (at most 30). | `backend/app/security/` |
 | **3b. Input checks** | Cleans up what you typed, works out what kind of indicator it is, and refuses private or internal addresses before anything leaves your computer. | `backend/app/services/normalization.py` |
-| **3c. Intel engine** | Reuses saved answers that are still fresh, asks the providers for the rest, and scores the evidence. | `backend/app/services/intel_service.py`, `backend/app/collectors/`, `backend/app/correlation/scoring.py` |
-| **3d. Audit trail** | Writes down every lookup. The database refuses to change or delete these rows. | `backend/app/services/audit.py` |
+| **3c. Intel engine** | Reuses saved answers that are still fresh, asks the providers for the rest, and scores the evidence. It also removes the indicators you choose to delete. | `backend/app/services/intel_service.py`, `backend/app/collectors/`, `backend/app/correlation/scoring.py` |
+| **3d. Audit trail** | Writes down every lookup and every deletion. The database refuses to change or delete these rows. | `backend/app/services/audit.py` |
 | **4. The database** | Saves indicators, each provider's answers and the audit log. | `backend/app/models/`, `backend/alembic/` |
 | **5. The providers** | **AbuseIPDB** (IP addresses only) and **AlienVault OTX** (IP addresses, domains, URLs and SHA-256 hashes). | `backend/app/collectors/abuseipdb.py`, `otx.py` |
 | **6. Microsoft Entra ID** (optional) | Microsoft's sign-in service. Only when `AUTH_MODE=entra`, the API downloads Microsoft's public keys to check sign-in tokens. In the default local mode (`AUTH_MODE=dev`) there is no sign-in and you are a local developer. | `backend/app/security/auth.py` |
@@ -244,11 +248,33 @@ is 90. CipherForge is never 100% sure.
 Its confidence is 90: two fresh answers (70) plus 20 for the two sources agreeing. The method is
 written out in full in [docs/threat-intelligence.md](docs/threat-intelligence.md#scoring-intel-risk-v1).
 
+### What happens when you delete an indicator
+
+Deleting is permanent, so it has a few safeguards. The step-by-step instructions are in
+[Deleting indicators](#deleting-indicators). Behind the scenes:
+
+1. **You choose** one indicator or several, and press a delete button.
+2. **A box asks you to confirm.** It names what is about to go, and **Cancel** is already selected,
+   so pressing Enter by accident does nothing.
+3. **The gatekeeper checks you,** just as for a lookup: you must be a `SecurityAnalyst` or `Admin`.
+4. **The database removes everything in one go:** each chosen indicator and every provider answer
+   that was saved for it. Either all of it goes or none of it does.
+5. **The audit trail gets a note** for each deleted indicator: who deleted it, when, and from which
+   address. Nothing already in the audit log is changed or removed.
+6. **Every screen forgets the indicator:** the Indicators list, the Overview's lists and counts of
+   indicators, and the indicator's own page, which now says it cannot be found.
+
+Two things to know. **There is no undo,** because nothing is kept aside; only a database backup can
+bring an indicator back. And **the audit log is not touched,** so it still holds the text of the
+indicator, such as `8.8.8.8`, in its old entries. That is its job: it is the permanent record of what
+was looked up and deleted. CipherForge has no feature for deleting audit entries.
+
 ### What is built and what is planned
 
 | Area | Status |
 | --- | --- |
 | Threat intelligence: AbuseIPDB and OTX lookups, the cache, the score and the audit log | **Built and tested** |
+| Deleting indicators: one at a time, a ticked range or a whole page, with a confirmation and an audit record | **Built and tested** |
 | The dashboard: Overview, Investigate, Indicators, System status, command palette and the animated "Aurora Forge" look | **Built** |
 | Demo mode with simulated providers (for development and learning) | **Built** |
 | Microsoft Entra ID sign-in checks in the API | **Built on the API side.** The dashboard cannot sign in yet, so it works with `AUTH_MODE=dev` only |
@@ -692,6 +718,8 @@ them in `.env` as described in [Add your API keys](#add-your-api-keys-optional),
   rebuilds its data at once (Windows: `$env:CIPHERFORGE_DEMO_RESET = "1"`, then
   `Remove-Item Env:CIPHERFORGE_DEMO_RESET` afterwards; macOS or Linux:
   `CIPHERFORGE_DEMO_RESET=1 .venv/bin/python -m uvicorn devtools.demo_server:create_demo_app --factory`).
+  To remove only some indicators, delete them in the dashboard instead:
+  see [Deleting indicators](#deleting-indicators).
 
 ## Using the dashboard
 
@@ -709,8 +737,8 @@ Use the menu on the left to move around. On a phone it becomes a bar along the b
 | --- | --- | --- |
 | **Overview** | `/` | Figures, charts and a map for everything you have checked. |
 | **Investigate** | `/investigate` | Type in an indicator and read the result. |
-| **Indicators** | `/indicators` | A searchable list of everything you have checked. |
-| *(click any indicator)* | `/indicators/…` | The saved record of one indicator. |
+| **Indicators** | `/indicators` | A searchable list of everything you have checked. You can also delete indicators here. |
+| *(click any indicator)* | `/indicators/…` | The saved record of one indicator. You can re-check it or delete it there. |
 | **System status** | `/status` | Is the API running, and can it reach its database? |
 
 Every screen has its own address, so you can bookmark it. The Indicators list keeps your search and
@@ -732,6 +760,12 @@ Try this on Path A. It touches every screen.
    record.
 7. Open **System status** and press **Refresh**.
 8. Press `Ctrl K` (`Cmd K` on a Mac), type `8.8.8.8` and look at the options.
+9. Last, try deleting. Go back to **Indicators**, search for `8.8.8.8` (the one you checked in step
+   3), tick its box and press **Delete selected (1)**. Read the box, which says what will go, then
+   press **Delete indicator**. The indicator disappears from the list. The demo's data are invented,
+   so nothing real is lost, and you can rebuild it
+   ([Stop it and start it again](#stop-it-and-start-it-again)). To leave everything as it was,
+   press **Cancel** instead.
 
 On Path B with no keys, every result comes back **Not assessed**. That is correct.
 
@@ -915,7 +949,7 @@ recorded in the audit log, without the text you typed.
 
 ### The Indicators screen
 
-![The Indicators list, filtered to High or critical and sorted by highest risk, with five numbered markers](docs/screenshots/tour-indicators.png)
+![The Indicators list, filtered to High or critical and sorted by highest risk, with eight numbered markers](docs/screenshots/tour-indicators.png)
 
 This is the list you get when you click the **High-risk indicators** tile on the Overview.
 
@@ -923,16 +957,23 @@ This is the list you get when you click the **High-risk indicators** tile on the
 2. **The filters.** **Type** (IPv4, IPv6, Domain, URL or SHA-256), **Classification** (High or
    critical, Critical, High, Medium, Low, Informational or Not assessed) and **Sort by** (Most
    recently checked, or Highest risk first). **Reset filters** appears when a filter is on.
-3. **The count**, such as "12 indicators found."
+3. **The count**, such as "17 indicators found."
 4. **An indicator.** Click it to open its saved record.
 5. **Score and Confidence.** The two numbers for each indicator. The other columns are Type,
    Classification, Sources (how many had evidence), Status and Last checked.
+6. **The tick boxes.** Tick the rows you want to delete. The box in the header ticks every row on the
+   page.
+7. **The bin button.** Deletes that one indicator, after asking you to confirm.
+8. **The hint.** "Tick rows to delete them. Hold Shift to tick a range." Once you tick something, it
+   is replaced by **Clear selection** and **Delete selected (N)**.
+
+Deleting is explained step by step in [Deleting indicators](#deleting-indicators).
 
 The list shows 25 indicators at a time. Use **Previous** and **Next** under the table.
 
 ### A saved record
 
-![An indicator's saved record, with three numbered markers](docs/screenshots/tour-indicator-details.png)
+![An indicator's saved record, with four numbered markers](docs/screenshots/tour-indicator-details.png)
 
 1. **← All indicators.** Goes back to the list.
 2. **Re-check with providers.** Asks the providers again and updates the record. This uses some of
@@ -940,6 +981,75 @@ The list shows 25 indicators at a time. Use **Previous** and **Next** under the 
 3. **The result.** The same gauge, provider cards and score breakdown that you saw on the Investigate
    screen. The page says, "This is the stored record. Re-checking asks the configured providers again
    and updates it."
+4. **Delete indicator.** Deletes this indicator and its stored provider answers, after asking you to
+   confirm. The page then says **Indicator deleted** and offers **Back to the list** and
+   **Investigate another indicator**.
+
+### Deleting indicators
+
+Use this to get rid of indicators you no longer want, such as a test lookup, a typo or an old entry.
+You can delete one indicator or many at once. **Deleting is permanent.** The indicator and every
+provider answer stored for it are removed from the database, and it disappears from every screen. What
+happens behind the scenes is in
+[What happens when you delete an indicator](#what-happens-when-you-delete-an-indicator).
+
+| You want to delete… | Do this |
+| --- | --- |
+| **One indicator from the list** | Press the bin button at the end of its row. |
+| **The indicator you are reading** | Open its saved record and press **Delete indicator**. |
+| **Several indicators** | Tick their boxes, then press **Delete selected (N)**, where N is how many you ticked. |
+| **A run of rows next to each other** | Tick the first box, then hold `Shift` and click the last box. Every row between them is ticked as well. |
+| **Every row on the page** | Tick the box in the table header, then press **Delete selected (N)**. |
+
+![The Indicators list with three rows ticked, with four numbered markers](docs/screenshots/tour-delete-select.png)
+
+1. **The header box.** Ticks or unticks every row on the page. It shows a dash when only some rows are
+   ticked.
+2. **The ticked rows.** Click one box, then `Shift`-click another to tick every row between them.
+3. **Clear selection** and **Delete selected (3)**. They appear as soon as one row is ticked. **Clear
+   selection** unticks everything.
+4. **The bin button.** It stays on every row, for deleting just that one.
+
+Whichever way you choose, a box opens and asks you to confirm. Nothing is deleted until you press the
+red button in it.
+
+![The confirmation box, with five numbered markers](docs/screenshots/tour-delete-confirm.png)
+
+1. **The title.** How many indicators are about to go: "Delete this indicator?" for one, or "Delete 3
+   indicators?" for three.
+2. **The list.** The indicators you chose. It names up to five, then says "and N more".
+3. **The warning.** "This permanently removes them, and every provider answer stored for them, from
+   the database. It cannot be undone."
+4. **The audit note.** "The audit log is kept as it is: it still records the past lookups and gains a
+   record of this deletion."
+5. **The buttons.** **Cancel** closes the box and changes nothing. It is the button that is selected
+   when the box opens, so pressing Enter by mistake cannot delete anything. The red button does the
+   deleting. If something goes wrong, such as the API being unreachable, the box stays open and says
+   why, and nothing is deleted.
+
+![The Indicators list after the deletion, with three numbered markers](docs/screenshots/tour-delete-done.png)
+
+1. **The notice.** "Deleted 3 indicators and 15 stored provider answers." If an indicator had
+   already been deleted by someone else, the notice also says how many were "already gone".
+2. **The count.** It goes down by the number you deleted, here from 17 to 14.
+3. **Dismiss.** Closes the notice.
+
+Things to know:
+
+- **There is no undo.** Be sure before you press the red button. Only a database backup can bring an
+  indicator back.
+- **Ticks belong to the page you are on.** When you change page, search or filter, the ticks are
+  cleared, so you can never delete rows you cannot see.
+- **There is no "delete everything" button.** The list shows 25 rows at a time. To empty a long list,
+  tick the header box, delete, and repeat. (To start again with an empty database, see
+  [Stop it and start it again](#stop-it-and-start-it-again).)
+- **The audit log is not touched.** Its old entries stay as they are, and each deletion adds one new
+  entry (`IOC_DELETE`) saying who deleted what and when. It still holds the text of a deleted
+  indicator, such as `8.8.8.8`. That is on purpose: it is the permanent record of what was done.
+  CipherForge has no feature for deleting audit entries.
+- **A deleted indicator can come back as a new one.** If you investigate the same text again, the
+  providers are asked afresh and a new record is saved.
+- **Who may delete.** Anyone who may investigate: a `SecurityAnalyst` or an `Admin`.
 
 ### The System status screen
 
@@ -1040,7 +1150,7 @@ The dashboard is only one way in. Everything it shows comes from the **API**, an
 yourself from PowerShell, `curl` or your own scripts. That is handy for automation, and for seeing
 exactly what the dashboard sees. (In demo mode the answers are invented, as everywhere else.)
 
-The API has eight endpoints today:
+The API has ten endpoints today:
 
 | Endpoint | What it does |
 | --- | --- |
@@ -1050,6 +1160,8 @@ The API has eight endpoints today:
 | `POST /api/v1/intel/investigate` | Investigates one indicator, like the **Investigate** screen. The body is `{"indicator": "8.8.8.8"}`. Add `"refresh": true` to ask the providers again instead of reusing a saved answer. |
 | `GET /api/v1/intel/indicators` | Searches what you have investigated. Optional filters: `q` (part of the value), `type`, `classification`, `assessed`, `sort`, `limit` and `offset`. |
 | `GET /api/v1/intel/indicators/{id}` | One saved indicator, by its id. |
+| `DELETE /api/v1/intel/indicators/{id}` | Deletes one saved indicator and its stored provider answers for good, like the **Delete indicator** button. |
+| `POST /api/v1/intel/indicators/bulk-delete` | Deletes several at once, like **Delete selected**. The body is `{"indicator_ids": ["…", "…"]}`, with 1 to 100 ids. |
 | `GET /api/v1/intel/stats` | Counts of indicators and lookups. |
 | `GET /api/v1/intel/overview` | The figures behind the Overview screen. |
 
@@ -1084,6 +1196,35 @@ as a small table). `/api/v1/me` answers
 `{"subject":"dev-user","name":"Local Developer","roles":["SecurityAnalyst"],"auth_mode":"dev"}`. (On
 Windows, `curl.exe` also works, but its quoting rules differ between PowerShell versions, so this
 guide uses `Invoke-RestMethod`.)
+
+**Deleting through the API.** Both delete routes remove the rows for good, as the dashboard does, and
+add one `IOC_DELETE` entry per indicator to the audit log. Every saved indicator has an
+`indicator_id`. These commands investigate `8.8.8.8` and then delete exactly that indicator.
+
+Windows (PowerShell):
+
+```powershell
+$result = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/investigate -ContentType 'application/json' -Body '{"indicator": "8.8.8.8"}'
+Invoke-RestMethod -Method Delete -Uri "http://127.0.0.1:8000/api/v1/intel/indicators/$($result.indicator.indicator_id)"
+```
+
+macOS or Linux (copy the `indicator_id` from the first answer into the second command):
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d '{"indicator": "8.8.8.8"}' http://127.0.0.1:8000/api/v1/intel/investigate
+curl -s -X DELETE http://127.0.0.1:8000/api/v1/intel/indicators/PASTE-THE-ID-HERE
+```
+
+The answer lists what was removed, for example
+`{"deleted":["<the id>"],"not_found":[],"observations_removed":2}` (2 stored provider answers; `0` when
+no provider had answered). To delete several at once, send their ids to `bulk-delete` (up to 100). An
+id that no longer exists comes back in `not_found`, which is not an error:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/indicators/bulk-delete -ContentType 'application/json' -Body '{"indicator_ids": ["PASTE-ID-1", "PASTE-ID-2"]}'
+```
+
+There is no API call that deletes audit entries.
 
 **What an investigation answer looks like.** This is the real answer of a new installation with no API
 keys, shortened (the full one has more fields, listed in [docs/api.md](docs/api.md)):
@@ -1148,9 +1289,11 @@ keys, shortened (the full one has more fields, listed in [docs/api.md](docs/api.
 }
 ```
 
-The statuses you will meet are `401` (no valid sign-in), `403` (the wrong role), `422` (input not
-accepted), `429` (too many lookups; the `Retry-After` header says how many seconds to wait) and `503`
-(something the API needs, such as the database, is down). Every answer carries an `X-Correlation-ID`
+The statuses you will meet are `401` (no valid sign-in), `403` (the wrong role), `404` (no indicator
+has that id, so deleting the same one twice gives `404`), `409` (an indicator was deleted while it was
+being investigated; investigate it again), `422` (input not accepted), `429` (too many lookups; the
+`Retry-After` header says how many seconds to wait) and `503` (something the API needs, such as the
+database, is down). Every answer carries an `X-Correlation-ID`
 header. Quote it when you report a problem, because the same ID appears in the API's log for that
 request. The full contract is in [docs/api.md](docs/api.md).
 
@@ -1252,10 +1395,11 @@ it prints a line for every problem and the line names the cause.
 | **API OFFLINE** in the top bar, or **Could not reach the API** | The dashboard cannot talk to the API. Is Terminal 1 still running? Does <http://127.0.0.1:8000/health> answer? If the API uses another port, see [below](#free-a-port-or-use-another-one). |
 | **The request timed out** | The API or a provider was slow. Try again in a moment. |
 | **Not signed in** | The API wants a sign-in, and the dashboard cannot sign in yet. Put `AUTH_MODE=dev` and `ENVIRONMENT=development` in `.env`, then restart the API. |
-| **Access denied** | Your role is not allowed to look things up. Set `DEV_AUTH_ROLES=SecurityAnalyst` in `.env`, then restart the API. |
+| **Access denied** | Your role is not allowed to look things up, or to delete them. Set `DEV_AUTH_ROLES=SecurityAnalyst` in `.env`, then restart the API. |
 | **That request was not accepted** | CipherForge refused the indicator, for example a private address or an MD5 hash. The line under the title says why. See [What you can type](#what-you-can-type). |
 | **Rate limit reached** | You started more than 30 investigations in a minute. Wait for the number of seconds the notice shows. |
 | **The API reported an error** | The API had a problem. Try again shortly. If it keeps happening, read Terminal 1, and quote the reference code shown in the notice. It also appears in the API's log for that request. |
+| The delete box stays open and shows a red notice | The deletion did not happen, so nothing was deleted. The causes are the ones in the rows above (the API is offline, a time-out, or a role that is not allowed). Fix the cause and press the red button again, or press **Cancel**. |
 | **Unexpected response from the API** | The dashboard and the API are different versions. Update both to the same version. |
 | The **System status** screen says the database is **Unavailable** (or `/ready` answers `503`) | The API cannot reach its database. For Path B, check that `DATABASE_URL` points at your SQLite file and that you ran `alembic upgrade head` from `backend`. For Docker, check that the `postgres` container is running. |
 | Every result says **Not configured** or **Not assessed** | No API key is set. Follow [Add your API keys](#add-your-api-keys-optional) and restart the API. |
@@ -1322,9 +1466,9 @@ The project has three layers of automated tests (counts are for version 0.5.0):
 
 | Layer | Tests | Tool | What it checks |
 | --- | --- | --- | --- |
-| Backend | 867 | pytest | The API, the input checks, the provider code (run against recorded answers, never the live services), the score, the database and the audit log |
-| Frontend units | 426 | Vitest | Screens, components, helpers and the motion layer |
-| End to end | 596 | Playwright | The finished dashboard, in a real browser, talking to the real API |
+| Backend | 958 | pytest | The API, the input checks, the provider code (run against recorded answers, never the live services), the score, the database, deleting indicators and the audit log |
+| Frontend units | 477 | Vitest | Screens, components, helpers and the motion layer |
+| End to end | 686 | Playwright | The finished dashboard, in a real browser, talking to the real API |
 
 To run the first two, from the project folder.
 
@@ -1332,34 +1476,35 @@ Windows (PowerShell):
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest      # ends with: 669 passed, 198 skipped
+.\.venv\Scripts\python.exe -m pytest      # ends with: 717 passed, 241 skipped
 
 cd ..\frontend
 npm.cmd run typecheck
 npm.cmd run lint
-npm.cmd test                              # ends with: Tests  426 passed (426)
+npm.cmd test                              # ends with: Tests  477 passed (477)
 ```
 
 macOS or Linux:
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # ends with: 669 passed, 198 skipped
+cd backend && .venv/bin/python -m pytest      # ends with: 717 passed, 241 skipped
 cd ../frontend && npm run typecheck && npm run lint && npm test
 ```
 
-**"198 skipped" is normal.** 197 of them are the PostgreSQL copies of the database tests. They are
+**"241 skipped" is normal.** 240 of them are the PostgreSQL copies of the database tests. They are
 skipped unless you point `TEST_DATABASE_URL` at a throwaway PostgreSQL database (see
 [docs/testing.md](docs/testing.md#quality-checks)). The last one is skipped on purpose, because SQLite
-has no `TRUNCATE` statement. With a PostgreSQL database supplied, 866 tests pass and 1 is skipped.
-Each of the two runs takes about a minute.
+has no `TRUNCATE` statement. With a PostgreSQL database supplied, 957 tests pass and 1 is skipped.
+The backend run takes about a minute and a half, and the frontend run about a minute.
 
-The end-to-end tests are started with `npm.cmd run test:e2e` (from `frontend`). They take about 37
-minutes. Before the first run, read [docs/testing.md](docs/testing.md#testing-the-dashboard): it lists
-what to install and what each group of tests proves. The same page lists the security scanners and the
-other [quality checks](docs/testing.md#quality-checks).
+The end-to-end tests are started with `npm.cmd run test:e2e` (from `frontend`). They take 20 to 40
+minutes, depending on the computer. Before the first run, read
+[docs/testing.md](docs/testing.md#testing-the-dashboard): it lists what to install and what each group
+of tests proves. The same page lists the security scanners and the other
+[quality checks](docs/testing.md#quality-checks).
 
 **What a green result shows.** At the time of writing, every backend test passes (on SQLite, and on a
-real PostgreSQL 16.2 when one is supplied), and so do all 426 frontend tests and all 596 end-to-end
+real PostgreSQL 16.2 when one is supplied), and so do all 477 frontend tests and all 686 end-to-end
 tests. That shows the code does what the tests expect. It does **not** show that the live providers
 work (the tests use recorded and simulated answers), that Docker Desktop works on your computer (the
 containers have only been started by the automatic checks on GitHub) or that the design looks good to
@@ -1390,7 +1535,7 @@ cipherforge/
 |   |   |-- api/              The web addresses: /health, /ready and /api/v1/...
 |   |   |-- collectors/       One file per provider: abuseipdb.py and otx.py
 |   |   |-- correlation/      scoring.py: how the 0 to 100 score is worked out
-|   |   |-- services/         The investigation steps, Overview figures, audit log
+|   |   |-- services/         The investigation steps, deleting indicators, Overview figures, audit log
 |   |   |-- security/         Sign-in checks, roles and the rate limiter
 |   |   |-- models/           The database tables
 |   |   |-- schemas/          The exact shape of every request and reply
@@ -1409,7 +1554,7 @@ cipherforge/
 |   |   |-- components/       Building blocks: cards, charts, the side rail, ...
 |   |   |-- features/         Helper logic behind the screens' figures
 |   |   |-- services/         The code that talks to the API and checks replies
-|   |   |-- hooks/            Small helpers that load data
+|   |   |-- hooks/            Small helpers that load data and keep track of ticked rows
 |   |   |-- motion/           The animations (anime.js)
 |   |   |-- effects/          The "Visual effects" on/off switch
 |   |   |-- test/, types/     Test helpers and shared type definitions
@@ -1441,6 +1586,7 @@ JavaScript packages), `frontend/dist` (the built dashboard), `backend/.demo` (th
 | Add a third provider | `backend/app/collectors/`. The steps are in [Adding a provider](docs/threat-intelligence.md#adding-a-provider). |
 | Add or change a setting | `backend/app/core/config.py` and `.env.example`. |
 | Add a database table | `backend/app/models/`, plus a new script in `backend/alembic/versions/`. |
+| Change how deleting works | The rules and the database work are in `delete_indicators` in `backend/app/services/intel_service.py`, and the two routes are in `backend/app/api/v1/intel.py`. The confirmation box is `frontend/src/components/intel/DeleteIndicatorsDialog.tsx`, and the tick boxes are `frontend/src/hooks/useRowSelection.ts`. |
 | Change what a screen looks like | `frontend/src/pages/` (the screens) and `frontend/src/components/` (the pieces). |
 | Change the colours | The `@theme` block near the top of `frontend/src/index.css`. |
 | Change the animations | `frontend/src/motion/`. |
@@ -1466,9 +1612,10 @@ behind it is in [docs/threat-model.md](docs/threat-model.md).
 | **Who can see what I look up?** | The providers: the indicator you investigate is sent to them, outside your organisation, so do not type anything you are not allowed to share. The Investigate screen says this next to the button. CipherForge also writes each lookup, with who asked and when, to the audit log in your own database. Your browser talks only to CipherForge's own web server. No fonts, maps or analytics come from other sites, and there are no cookies. The one thing the dashboard remembers is your visual-effects switch. One thing to know: the search text on the Indicators screen is part of the web address, so it can appear in your browser history. |
 | **Who is allowed to use it?** | The API has three roles: `Admin`, `SecurityAnalyst` and `User`. The investigation and indicator routes need `SecurityAnalyst` or `Admin`, and unknown roles are ignored. In Microsoft Entra ID mode the API checks sign-in tokens and rejects forged or unsigned ones. In `dev` mode (used in this guide) there is no sign-in, so use it only on your own computer. |
 | **What if someone floods it with requests?** | Each user may start 30 investigations a minute (you can change this). That also protects your providers' free allowances. |
-| **Can the history be altered?** | Every check is written to the audit log, even refused ones (without the text that was refused). The database refuses to change or delete these rows. A database administrator could still remove that protection, so for serious use copy the log somewhere the application cannot write. |
+| **Can the history be altered?** | Every check, and every deletion of an indicator, is written to the audit log, even refused checks (without the text that was refused). The database refuses to change or delete these rows, and CipherForge has no feature that does. A database administrator could still remove that protection, so for serious use copy the log somewhere the application cannot write. |
+| **Could something be deleted by accident, or by someone who should not?** | Deleting always shows a box that names what will go, with **Cancel** already selected, so pressing Enter does nothing. No address or link can delete anything: only pressing the red button does. The API accepts a deletion only from a `SecurityAnalyst` or an `Admin`, only for the ids it names (there is no "delete everything that matches"), and for at most 100 at a time. Each deletion is recorded in the audit log with who did it. Any analyst may delete any indicator, and there is no undo. |
 | **What if the settings are unsafe?** | In `production` mode the API refuses to start with dev sign-in, SQLite, the example password `CHANGE_ME` or `*` for CORS (the setting that decides which websites may call the API). The message names the setting and never its value. The `/docs` page is switched off too. |
-| **Could CipherForge break something on its own?** | No. It reads from two providers and advises. It never blocks, isolates or changes anything. |
+| **Could CipherForge break something on its own?** | No. It reads from two providers and advises. It never blocks, isolates or changes anything on your network or computers. The only thing it removes is what you tell it to delete from its own database. |
 | **Could the demo touch real data?** | No. Demo mode uses its own database file inside `backend/.demo/` (it refuses any other place), its providers are pretend and make no outside requests, and a banner on every screen says so. |
 | **Will the screen mislead me?** | It is designed not to. "Not assessed" never looks like "safe". Each provider is shown separately. A country on the map is labelled "Provider-reported country", never as where the attacker is. Every chart has its exact numbers as text. |
 | **Is the Docker set-up locked down?** | It is written to be: the containers run without administrator rights, drop extra Linux powers and publish ports only on `127.0.0.1`. The automatic checks on GitHub start it and confirm that it answers, but they do not test each of these protections, and it has not been run on a personal computer (see [Limitations](#limitations)). |
@@ -1559,12 +1706,18 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
   Anything other people can reach needs a proxy with HTTPS in front of it.
 - **The rate limit lives in memory.** It is per process, it resets when the API restarts, and several
   copies of the API would not share it.
-- **Only investigations are audited.** Opening a stored record is not.
+- **Only investigations and deletions are audited.** Opening a stored record is not.
 - **The audit log is protected from the application, not from a database administrator.**
-- **Old data is kept.** Nothing is deleted or tidied away yet.
+- **Old data is kept until you delete it.** You can delete indicators by hand. Nothing is deleted or
+  tidied away by itself, and the audit log cannot be deleted from at all.
+- **A deleted indicator is still named in the audit log.** The audit entries keep the text of what was
+  looked up and deleted, such as `8.8.8.8`, on purpose. Deleting also does not wipe copies that live
+  outside the application, such as database backups.
+- **Any analyst can delete any indicator.** There is no owner for an indicator, and there is no
+  undo.
 - **Two lookups of the same new indicator at the same moment** may both ask the providers and keep two
   answers.
-- **A plain `pytest` run covers SQLite only,** so it reports 198 skipped tests. See
+- **A plain `pytest` run covers SQLite only,** so it reports 241 skipped tests. See
   [Tests and quality checks](#tests-and-quality-checks).
 
 ## More documentation

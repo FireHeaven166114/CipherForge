@@ -24,19 +24,31 @@ from sqlalchemy import select
 from app.collectors.base import ProviderStatus
 from app.main import create_app
 from app.models.audit import AuditLog
-from app.models.threat import ThreatIndicator
-from app.services.intel_service import IntelService
+from app.models.threat import ThreatIndicator, ThreatObservation
+from app.services.intel_service import IntelService, RequestContext
 from tests.conftest import CLIENT_ID, TENANT_ID, TokenFactory
-from tests.intel_helpers import MODERATE, STRONG, Clock, FakeAbuse, FakeOtx, answer, failure
+from tests.intel_helpers import (
+    MODERATE,
+    STRONG,
+    ActsWhenAsked,
+    Clock,
+    FakeAbuse,
+    FakeOtx,
+    answer,
+    failure,
+)
 
 INVESTIGATE = "/api/v1/intel/investigate"
 INDICATORS = "/api/v1/intel/indicators"
 INDICATOR = INDICATORS + "/{indicator_id}"
+BULK_DELETE = INDICATORS + "/bulk-delete"
 STATS = "/api/v1/intel/stats"
 OVERVIEW = "/api/v1/intel/overview"
 ROUTES = [
     ("POST", INVESTIGATE),
     ("GET", INDICATOR),
+    ("DELETE", INDICATOR),
+    ("POST", BULK_DELETE),
     ("GET", INDICATORS),
     ("GET", STATS),
     ("GET", OVERVIEW),
@@ -183,7 +195,9 @@ def seeded(build_api: ApiFactory, clock: Clock) -> tuple[Api, dict[str, str]]:
 
 def call(api: Api, method: str, path: str, *, headers: dict[str, str] | None = None) -> Response:
     """A valid request to any intel route."""
-    body = {"indicator": IP} if method == "POST" else None
+    body: dict[str, Any] | None = None
+    if method == "POST":
+        body = {"indicator_ids": [str(uuid.uuid4())]} if path == BULK_DELETE else {"indicator": IP}
     return api.request(method, path.format(indicator_id=uuid.uuid4()), headers=headers, json=body)
 
 
@@ -873,6 +887,338 @@ def test_the_overview_of_an_empty_database_is_complete_and_zeroed(api: Api) -> N
     for facet in ("countries", "malware_families", "attack_techniques", "tags"):
         assert body[facet] == []
     assert body["top_risk"] == [] and body["recent"] == []
+
+
+# --- Deleting stored indicators ------------------------------------------------------------
+
+
+def delete(
+    api: Api, indicator_id: str | uuid.UUID, *, headers: dict[str, str] | None = None
+) -> Response:
+    return api.request("DELETE", f"{INDICATORS}/{indicator_id}", headers=headers)
+
+
+def bulk_delete(
+    api: Api, indicator_ids: Sequence[str | uuid.UUID], *, headers: dict[str, str] | None = None
+) -> Response:
+    body = {"indicator_ids": [str(indicator_id) for indicator_id in indicator_ids]}
+    return api.request("POST", BULK_DELETE, json=body, headers=headers)
+
+
+def deletions(api: Api) -> list[AuditLog]:
+    return [entry for entry in api.audit if entry.action == "IOC_DELETE"]
+
+
+def trail(api: Api) -> list[tuple[Any, ...]]:
+    return [
+        (e.id, e.timestamp, e.actor, e.action, e.target, e.result, e.source_ip, e.details)
+        for e in api.audit
+    ]
+
+
+def test_a_deleted_indicator_is_gone_from_the_database_and_from_every_view(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, ids = seeded
+    asked = (len(api.abuse.calls), len(api.otx.calls))
+
+    response = delete(api, ids["ip"])
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": [ids["ip"]], "not_found": [], "observations_removed": 2}
+    assert api.get(f"{INDICATORS}/{ids['ip']}").status_code == 404
+    assert values(api.get(INDICATORS)) == [SHA256, QUIET_DOMAIN, DOMAIN]
+    assert api.get(INDICATORS).json()["total"] == 3
+    stats = api.get(STATS).json()
+    assert (stats["total_indicators"], stats["by_type"]["ipv4"]) == (3, 0)
+    assert stats["by_classification"]["high"] == 0
+    overview = api.get(OVERVIEW).json()
+    assert overview["kpis"]["total_indicators"] == 3
+    shown = {item["indicator_id"] for key in ("top_risk", "recent") for item in overview[key]}
+    assert shown == {ids["domain"], ids["quiet"], ids["hash"]}
+    # Nothing of it is left in the tables, and the other indicators keep their answers.
+    remaining = {ids["domain"], ids["quiet"], ids["hash"]}
+    assert {str(row.id) for row in api.rows(select(ThreatIndicator))} == remaining
+    assert sorted(str(row.indicator_id) for row in api.rows(select(ThreatObservation))) == sorted(
+        remaining
+    )
+    assert (len(api.abuse.calls), len(api.otx.calls)) == asked  # no provider was asked
+
+
+def test_an_indicator_can_only_be_deleted_once(seeded: tuple[Api, dict[str, str]]) -> None:
+    api, ids = seeded
+    assert delete(api, ids["ip"]).status_code == 200
+    recorded = len(api.audit)
+
+    again = delete(api, ids["ip"])
+
+    assert again.status_code == 404
+    error = again.json()["error"]
+    assert (error["code"], error["message"]) == ("not_found", "Indicator not found.")
+    assert len(api.audit) == recorded
+    assert api.get(STATS).json()["total_indicators"] == 3
+
+
+def test_a_deletion_leaves_the_audit_trail_alone_and_adds_its_own_record(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, ids = seeded
+    before = trail(api)
+    assert [row[3] for row in before] == ["IOC_LOOKUP"] * 4
+
+    response = delete(api, ids["ip"], headers={**api.analyst, "X-Correlation-ID": "req-del-0001"})
+
+    assert response.status_code == 200
+    after = api.audit
+    assert trail(api)[:4] == before  # every earlier record is exactly as it was
+    [entry] = after[4:]
+    assert (entry.actor, entry.action, entry.target, entry.result) == (
+        "oid-456",
+        "IOC_DELETE",
+        TARGET,
+        "success",
+    )
+    assert entry.source_ip == CLIENT_ADDRESS
+    assert entry.correlation_id == "req-del-0001"
+    assert entry.details == {"observations_removed": 2}
+    # Lookups are counted from the audit trail, which a deletion does not change.
+    assert api.get(STATS).json()["lookups_last_24h"] == 4
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    ["not-a-uuid", "' OR 1=1 --", "<img src=x onerror=alert(1)>", "0" * 40],
+    ids=["text", "sql", "markup", "too-long"],
+)
+def test_a_malformed_id_deletes_nothing(seeded: tuple[Api, dict[str, str]], bad_id: str) -> None:
+    api, _ = seeded
+
+    response = api.request("DELETE", f"{INDICATORS}/{quote(bad_id, safe='')}")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert bad_id not in response.text
+    assert api.get(STATS).json()["total_indicators"] == 4
+    assert deletions(api) == []
+
+
+@pytest.mark.parametrize("wildcard", ["*", "%", "all", "null"])
+def test_a_wildcard_in_place_of_an_id_does_not_delete_everything(
+    seeded: tuple[Api, dict[str, str]], wildcard: str
+) -> None:
+    api, _ = seeded
+
+    response = api.request("DELETE", f"{INDICATORS}/{quote(wildcard, safe='')}")
+
+    assert response.status_code == 422
+    assert api.get(STATS).json()["total_indicators"] == 4
+    assert deletions(api) == []
+
+
+def test_a_selection_is_deleted_in_one_request(seeded: tuple[Api, dict[str, str]]) -> None:
+    api, ids = seeded
+    chosen = [ids["hash"], ids["domain"], ids["quiet"]]
+
+    response = bulk_delete(api, chosen, headers={**api.analyst, "X-Correlation-ID": "req-bulk-1"})
+
+    assert response.status_code == 200
+    # One answer each from OTX for the three, and none from AbuseIPDB, which only knows IPs.
+    assert response.json() == {"deleted": chosen, "not_found": [], "observations_removed": 3}
+    assert values(api.get(INDICATORS)) == [IP]
+    assert api.get(STATS).json()["total_indicators"] == 1
+    removed = deletions(api)
+    assert {entry.target for entry in removed} == {
+        f"sha256:{SHA256}",
+        f"domain:{DOMAIN}",
+        f"domain:{QUIET_DOMAIN}",
+    }
+    assert {entry.correlation_id for entry in removed} == {"req-bulk-1"}
+    assert {entry.actor for entry in removed} == {"oid-456"}
+    assert len(api.audit) == 4 + 3
+
+
+def test_ids_that_match_nothing_are_reported_and_the_others_are_deleted(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, ids = seeded
+    ghost = str(uuid.uuid4())
+
+    response = bulk_delete(api, [ghost, ids["ip"]])
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "deleted": [ids["ip"]],
+        "not_found": [ghost],
+        "observations_removed": 2,
+    }
+    repeated = bulk_delete(api, [ids["ip"], ghost])
+    assert repeated.status_code == 200  # a retry is harmless
+    assert repeated.json() == {
+        "deleted": [],
+        "not_found": [ids["ip"], ghost],
+        "observations_removed": 0,
+    }
+    assert len(deletions(api)) == 1  # nothing was deleted the second time, so nothing is recorded
+
+
+def test_a_repeated_id_is_deleted_and_recorded_once(seeded: tuple[Api, dict[str, str]]) -> None:
+    api, ids = seeded
+
+    response = bulk_delete(api, [ids["ip"], ids["ip"]])
+
+    assert response.json() == {"deleted": [ids["ip"]], "not_found": [], "observations_removed": 2}
+    assert len(deletions(api)) == 1
+
+
+BAD_DELETE_BODIES: dict[str, dict[str, Any]] = {
+    "empty-object": {},
+    "no-ids": {"indicator_ids": []},
+    "null": {"indicator_ids": None},
+    "text": {"indicator_ids": "everything"},
+    "not-an-id": {"indicator_ids": ["ECHO-MARKER-123"]},
+    "one-bad-among-good": {"indicator_ids": [str(uuid.uuid4()), "ECHO-MARKER-123"]},
+    "too-many": {"indicator_ids": [str(uuid.uuid4()) for _ in range(101)]},
+    "unknown-field": {"indicator_ids": [str(uuid.uuid4())], "everything": True},
+    "a-filter-instead-of-ids": {"type": "domain", "q": "example"},
+}
+
+
+@pytest.mark.parametrize("body", list(BAD_DELETE_BODIES.values()), ids=list(BAD_DELETE_BODIES))
+def test_a_malformed_selection_deletes_nothing(
+    seeded: tuple[Api, dict[str, str]], body: dict[str, Any]
+) -> None:
+    api, _ = seeded
+
+    response = api.request("POST", BULK_DELETE, json=body)
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "validation_error"
+    assert all(set(detail) == {"loc", "msg", "type"} for detail in error["details"])
+    assert "ECHO-MARKER-123" not in response.text
+    assert api.get(STATS).json()["total_indicators"] == 4
+    assert deletions(api) == []
+
+
+def test_a_whole_page_of_a_hundred_can_be_deleted_at_once(api: Api) -> None:
+    response = bulk_delete(api, [uuid.uuid4() for _ in range(100)])
+
+    assert response.status_code == 200
+    assert len(response.json()["not_found"]) == 100
+
+
+@pytest.mark.parametrize(
+    ("content", "content_type"),
+    [
+        ('{"indicator_ids": ["%s"]}', "text/plain"),
+        ("indicator_ids=%s", "application/x-www-form-urlencoded"),
+    ],
+    ids=["text-plain", "form"],
+)
+def test_a_form_or_plain_text_body_cannot_delete_anything(
+    seeded: tuple[Api, dict[str, str]], content: str, content_type: str
+) -> None:
+    api, ids = seeded
+    headers = {**api.analyst, "Content-Type": content_type}
+
+    response = api.request("POST", BULK_DELETE, content=content % ids["ip"], headers=headers)
+
+    assert response.status_code == 422
+    assert api.get(STATS).json()["total_indicators"] == 4
+
+
+@pytest.mark.parametrize("who", ["anonymous", "user", "no-roles"])
+def test_only_analysts_and_admins_can_delete_a_stored_indicator(
+    seeded: tuple[Api, dict[str, str]], who: str
+) -> None:
+    api, ids = seeded
+    headers = {"anonymous": {}, "user": api.auth(["User"]), "no-roles": api.auth([])}[who]
+    expected = 401 if who == "anonymous" else 403
+    recorded = trail(api)
+
+    assert delete(api, ids["ip"], headers=headers).status_code == expected
+    assert bulk_delete(api, [ids["ip"], ids["domain"]], headers=headers).status_code == expected
+
+    assert api.get(STATS).json()["total_indicators"] == 4
+    assert trail(api) == recorded
+
+
+def test_an_admin_can_delete_an_indicator(seeded: tuple[Api, dict[str, str]]) -> None:
+    api, ids = seeded
+
+    assert delete(api, ids["ip"], headers=api.auth(["Admin"])).status_code == 200
+
+
+def test_a_deleted_indicator_can_be_investigated_again_from_scratch(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, ids = seeded
+    assert delete(api, ids["ip"]).status_code == 200
+    asked = (len(api.abuse.calls), len(api.otx.calls))
+
+    response = api.investigate(IP)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["indicator"]["indicator_id"] != ids["ip"]  # a new indicator, not a revived one
+    assert [provider["from_cache"] for provider in body["providers"]] == [False, False]
+    assert (len(api.abuse.calls), len(api.otx.calls)) == (asked[0] + 1, asked[1] + 1)
+    assert api.get(STATS).json()["total_indicators"] == 4
+
+
+def test_an_indicator_deleted_while_it_is_being_investigated_is_not_brought_back(
+    build_api: ApiFactory, clock: Clock
+) -> None:
+    holder: list[Api] = []
+
+    def delete_it() -> None:
+        # What another analyst's request does while this investigation waits on the providers.
+        api = holder[0]
+        with api.app.state.session_factory() as session:
+            [indicator_id] = session.scalars(select(ThreatIndicator.id))
+            api.app.state.intel_service.delete_indicators(
+                session, RequestContext(actor="another-analyst"), [indicator_id]
+            )
+
+    otx = ActsWhenAsked(delete_it, [answer("otx", signal=MODERATE, evidence_at=clock.ago(days=2))])
+    api = build_api(otx=otx)
+    holder.append(api)
+
+    response = api.investigate(IP)
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "conflict"
+    assert "deleted while it was being investigated" in error["message"]
+    assert api.rows(select(ThreatIndicator)) == []
+    assert api.rows(select(ThreatObservation)) == []  # the answers were discarded, not stored
+    lookup = [entry for entry in api.audit if entry.action == "IOC_LOOKUP"]
+    assert [(entry.actor, entry.target, entry.result) for entry in lookup] == [
+        ("oid-456", TARGET, "partial")
+    ]
+    assert lookup[0].details == {"refresh": False, "discarded": "indicator_deleted"}
+    assert [entry.actor for entry in deletions(api)] == ["another-analyst"]
+    assert api.investigate(IP).status_code == 200  # and investigating again simply works
+
+
+def test_deleting_logs_counts_and_never_the_values(
+    seeded: tuple[Api, dict[str, str]], caplog: pytest.LogCaptureFixture
+) -> None:
+    api, ids = seeded
+    caplog.set_level(logging.DEBUG)
+
+    assert delete(api, ids["ip"]).status_code == 200
+    assert bulk_delete(api, [ids["domain"], ids["hash"]]).status_code == 200
+
+    everything = "\n".join(f"{record.getMessage()} {record.__dict__}" for record in caplog.records)
+    assert "request" in everything  # the capture is working
+    for needle in (IP, DOMAIN, SHA256, QUIET_DOMAIN):
+        assert needle not in everything
+    done = [record for record in caplog.records if record.getMessage() == "indicators_deleted"]
+    assert [
+        (record.deleted, record.not_found, record.observations_removed)  # type: ignore[attr-defined]
+        for record in done
+    ] == [(1, 0, 2), (2, 0, 2)]
 
 
 # --- Cross-cutting guarantees ------------------------------------------------------------------

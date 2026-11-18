@@ -237,6 +237,27 @@ const LONG_SCENES: readonly Scene[] = [
     },
   },
   {
+    name: "the confirmation to delete one very long indicator",
+    scrollers: [LIST],
+    open: async ({ page, screen }) => {
+      await serveIndicators(page, hostileIndicators(LONG, "recent"));
+      await openList(page);
+      await page.getByRole("button", { name: /^Delete / }).first().click();
+      await expectOnScreen(page.getByRole("dialog", { name: "Delete this indicator?", exact: true }), screen);
+    },
+  },
+  {
+    name: "the confirmation to delete several very long indicators",
+    scrollers: [LIST],
+    open: async ({ page, screen }) => {
+      await serveIndicators(page, hostileIndicators(LONG, "recent"));
+      await openList(page);
+      await page.getByRole("checkbox", { name: "Select all indicators on this page" }).check();
+      await page.getByRole("button", { name: /^Delete selected \(/ }).click();
+      await expectOnScreen(page.getByRole("dialog", { name: /^Delete \d+ indicators\?$/ }), screen);
+    },
+  },
+  {
     name: "the command palette with a very long search",
     scrollers: [MATRIX],
     open: async ({ page, screen }) => {

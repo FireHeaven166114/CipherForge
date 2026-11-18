@@ -13,6 +13,10 @@ export const BUTTON =
 export const PRIMARY_BUTTON =
   "cf-glow cf-shimmer inline-flex items-center justify-center gap-2 rounded-control border border-cipher/70 bg-cipher/15 px-4 py-2 text-sm font-semibold uppercase tracking-[0.12em] text-cipher shadow-glow transition hover:bg-cipher hover:text-void disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:shadow-none";
 
+/** For an action that destroys data. The shape of BUTTON in the critical red, on a plate so the red text stays readable. */
+export const DANGER_BUTTON =
+  "cf-glow cf-plate inline-flex items-center justify-center gap-2 rounded-control border border-crit/60 px-3 py-1.5 text-sm font-semibold text-crit transition [--plate:var(--color-crit)] hover:border-crit hover:bg-crit hover:text-void disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
+
 export const LINK =
   "rounded-chip text-cipher underline decoration-cipher/40 underline-offset-2 transition hover:text-ink-50 hover:decoration-cipher";
 

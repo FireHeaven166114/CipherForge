@@ -1,9 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { APIRequestContext, Page } from "@playwright/test";
 
-import { fetchIndicators, firstIndicator, fresh, uniqueSuffix } from "./api";
+import { deleteViaApi, fetchIndicators, firstIndicator, fresh, uniqueSuffix } from "./api";
 import { type Violation, settle, summarise } from "./axe";
-import { type Guard, expect, test } from "./fixtures";
+import { type Guard, type Seed, expect, test } from "./fixtures";
 import { investigate, openInvestigate, openList, openOverview, openRecord, openStatus } from "./open";
 import { palette } from "./pages";
 import { must } from "./text";
@@ -15,6 +15,7 @@ const OVERVIEW = /\/api\/v1\/intel\/overview$/;
 const LIST = /\/api\/v1\/intel\/indicators\?/;
 const INVESTIGATE = /\/api\/v1\/intel\/investigate$/;
 const SERVICE = /\/(health|ready)$/;
+const DELETE_ONE = /\/api\/v1\/intel\/indicators\/[^/?]+$/;
 
 async function expectAccessible(page: Page, what: string): Promise<void> {
   await settle(page);
@@ -147,6 +148,26 @@ interface Tools {
   page: Page;
   request: APIRequestContext;
   guard: Guard;
+  seed: Seed;
+}
+
+/** Stores indicators for the scene and shows them in the list. */
+async function openSeeded(page: Page, seed: Seed, count: number) {
+  const { search, items } = await seed(count);
+  await openList(page, `?q=${search}`);
+  return items;
+}
+
+function deleteButtonOf(page: Page, value: string) {
+  return page.getByRole("button", { name: `Delete ${value}`, exact: true });
+}
+
+function confirmationToDeleteOne(page: Page) {
+  return page.getByRole("dialog", { name: "Delete this indicator?", exact: true });
+}
+
+function confirmDeletionOfOne(page: Page): Promise<void> {
+  return confirmationToDeleteOne(page).getByRole("button", { name: "Delete indicator", exact: true }).click();
 }
 
 /** Brings the app to a state. It may return a function that lets go of what it held back. */
@@ -237,6 +258,94 @@ const SCENES: Record<string, Scene> = {
     await page.goto("/indicators");
     await expect(page.getByRole("alert")).toContainText("The service is having a problem.");
   },
+  "the indicators list with some rows ticked": async ({ page, seed }) => {
+    await openSeeded(page, seed, 3);
+    const rows = page.getByRole("checkbox", { name: /^Select e2e-del-/ });
+    await rows.nth(0).check();
+    await rows.nth(1).check();
+    await expect(page.getByRole("button", { name: "Delete selected (2)", exact: true })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Select all indicators on this page" })).toBeChecked({
+      indeterminate: true,
+    });
+  },
+  "the indicators list with every row ticked": async ({ page, seed }) => {
+    await openSeeded(page, seed, 3);
+    await page.getByRole("checkbox", { name: "Select all indicators on this page" }).check();
+    await expect(page.getByRole("button", { name: "Delete selected (3)", exact: true })).toBeVisible();
+  },
+  "the confirmation to delete one indicator": async ({ page, seed }) => {
+    const [first] = await openSeeded(page, seed, 2);
+    await deleteButtonOf(page, must(first, "an indicator").indicator_value).click();
+    await expect(confirmationToDeleteOne(page)).toBeVisible();
+  },
+  "the confirmation to delete several indicators": async ({ page, seed }) => {
+    await openSeeded(page, seed, 7);
+    await page.getByRole("checkbox", { name: "Select all indicators on this page" }).check();
+    await page.getByRole("button", { name: "Delete selected (7)", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Delete 7 indicators?", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("and 2 more");
+  },
+  "the confirmation to delete while it deletes": async ({ page, seed }) => {
+    const [first] = await openSeeded(page, seed, 2);
+    const release = await hold(page, DELETE_ONE);
+    await deleteButtonOf(page, must(first, "an indicator").indicator_value).click();
+    await confirmDeletionOfOne(page);
+    await expect(confirmationToDeleteOne(page).getByRole("button", { name: "Deleting…" })).toBeVisible();
+    return release;
+  },
+  "the confirmation when the deletion failed": async ({ page, seed, guard }) => {
+    guard.expectStatus(500);
+    await page.route(DELETE_ONE, (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({ status: 500, json: failure(500, "internal_error", "The service is having a problem.") })
+        : route.continue(),
+    );
+    const [first] = await openSeeded(page, seed, 2);
+    await deleteButtonOf(page, must(first, "an indicator").indicator_value).click();
+    await confirmDeletionOfOne(page);
+    await expect(confirmationToDeleteOne(page).getByRole("alert")).toContainText("The service is having a problem.");
+  },
+  "the indicators list after a deletion": async ({ page, seed }) => {
+    const [first] = await openSeeded(page, seed, 2);
+    await deleteButtonOf(page, must(first, "an indicator").indicator_value).click();
+    await confirmDeletionOfOne(page);
+    await expect(page.getByRole("status").filter({ hasText: "Deleted 1 indicator" })).toBeVisible();
+  },
+  "the indicators list after everything on it was deleted": async ({ page, seed }) => {
+    await openSeeded(page, seed, 2);
+    await page.getByRole("checkbox", { name: "Select all indicators on this page" }).check();
+    await page.getByRole("button", { name: "Delete selected (2)", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Delete 2 indicators?", exact: true })
+      .getByRole("button", { name: "Delete 2 indicators", exact: true })
+      .click();
+    await expect(page.getByText("No indicators match these filters.")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Deleted 2 indicators" })).toBeVisible();
+  },
+  "a stored record with its delete confirmation": async ({ page, seed }) => {
+    const { items } = await seed(1);
+    await openRecord(page, must(items[0], "an indicator").indicator_id);
+    await page.getByRole("button", { name: "Delete indicator", exact: true }).click();
+    await expect(confirmationToDeleteOne(page)).toBeVisible();
+  },
+  "a stored record after it is deleted": async ({ page, seed }) => {
+    const { items } = await seed(1);
+    await openRecord(page, must(items[0], "an indicator").indicator_id);
+    await page.getByRole("button", { name: "Delete indicator", exact: true }).click();
+    await confirmDeletionOfOne(page);
+    await expect(page.getByRole("heading", { level: 1, name: "Indicator deleted" })).toBeVisible();
+  },
+  "a stored record that was already deleted": async ({ page, request, seed, guard }) => {
+    guard.expectStatus(404);
+    const { items } = await seed(1);
+    const record = must(items[0], "an indicator");
+    await openRecord(page, record.indicator_id);
+    await deleteViaApi(request, [record.indicator_id]);
+    await page.getByRole("button", { name: "Delete indicator", exact: true }).click();
+    await confirmDeletionOfOne(page);
+    await expect(page.getByRole("heading", { level: 1, name: "Indicator already gone" })).toBeVisible();
+  },
   "a stored record with the highest risk": async ({ page, request }) => {
     await openRecord(page, (await firstIndicator(request, { sort: "risk" })).indicator_id);
   },
@@ -288,8 +397,8 @@ function scan(
   check: (page: Page, what: string) => Promise<void> = expectAccessible,
 ): void {
   for (const name of names) {
-    test(name, async ({ page, request, guard }) => {
-      const release = await must(SCENES[name], name)({ page, request, guard });
+    test(name, async ({ page, request, guard, seed }) => {
+      const release = await must(SCENES[name], name)({ page, request, guard, seed });
       try {
         await check(page, name);
       } finally {
@@ -342,7 +451,10 @@ test.describe("on a phone", () => {
     "the command palette",
     "the investigate page with a result",
     "the indicators list",
+    "the indicators list with some rows ticked",
+    "the confirmation to delete several indicators",
     "a stored record with the highest risk",
+    "a stored record after it is deleted",
     "the system status, operational",
   ]);
 });
@@ -354,6 +466,7 @@ test.describe("with the effects on", () => {
     "the investigate page",
     "the investigate page with a result",
     "the indicators list",
+    "the confirmation to delete one indicator",
     "a stored record with the highest risk",
     "the system status, operational",
   ]);

@@ -200,3 +200,167 @@ describe("IndicatorDetailPage", () => {
     expect(screen.getByRole("status")).not.toHaveTextContent("Re-check complete");
   });
 });
+
+describe("IndicatorDetailPage deleting", () => {
+  const DELETED = { deleted: [INDICATOR_ID], not_found: [], observations_removed: 2 };
+
+  function deletes(fetchMock: ReturnType<typeof stubFetch>) {
+    return fetchMock.mock.calls
+      .filter(([, init]) => init?.method === "DELETE")
+      .map(([url]) => String(url));
+  }
+
+  it("asks before deleting and sends nothing when the analyst cancels", async () => {
+    const fetchMock = stubFetch(() => jsonResponse(makeInvestigation()));
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "CipherForge assessment" });
+    const open = screen.getByRole("button", { name: "Delete indicator" });
+
+    await user.click(open);
+
+    const dialog = screen.getByRole("dialog", { name: "Delete this indicator?" });
+    expect(within(dialog).getByText("203.0.113.9")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(open).toHaveFocus();
+    expect(deletes(fetchMock)).toEqual([]);
+    expect(screen.getByRole("heading", { name: "CipherForge assessment" })).toBeInTheDocument();
+  });
+
+  it("deletes the record and replaces the page with a confirmation that has somewhere to go", async () => {
+    const fetchMock = stubFetch((_url, init) =>
+      init?.method === "DELETE" ? jsonResponse(DELETED) : jsonResponse(makeInvestigation()),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "CipherForge assessment" });
+
+    await user.click(screen.getByRole("button", { name: "Delete indicator" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete indicator" }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "Indicator deleted" })).toBeInTheDocument();
+    expect(deletes(fetchMock)).toEqual([`/api/v1/intel/indicators/${INDICATOR_ID}`]);
+    expect(screen.getByText("Deleted 1 indicator and 2 stored provider answers.")).toBeInTheDocument();
+    expect(screen.getByText(/The audit log is kept as it is/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to the list" })).toHaveAttribute(
+      "href",
+      "/indicators",
+    );
+    expect(screen.getByRole("link", { name: "Investigate another indicator" })).toHaveAttribute(
+      "href",
+      "/investigate",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "CipherForge assessment" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Indicator deleted" }).closest("[tabindex='-1']"),
+    ).toHaveFocus();
+    await waitFor(() => expect(document.title).toBe("Indicator deleted · CipherForge"));
+  });
+
+  it("deletes the record on screen, not the one in the address, after a re-check stored a new one", async () => {
+    // Somebody deleted the stored record, so the re-check created a new one under a new ID.
+    const fetchMock = stubFetch((_url, init) => {
+      if (init?.method === "DELETE") {
+        return jsonResponse({ deleted: [OTHER_ID], not_found: [], observations_removed: 2 });
+      }
+      if (init?.method === "POST") {
+        return jsonResponse(
+          makeInvestigation({ indicator: makeIndicator({ indicator_id: OTHER_ID }) }),
+        );
+      }
+      return jsonResponse(makeInvestigation());
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "CipherForge assessment" });
+    await user.click(screen.getByRole("button", { name: "Re-check with providers" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Re-check complete. The record was updated."),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Delete indicator" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete indicator" }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "Indicator deleted" })).toBeInTheDocument();
+    expect(deletes(fetchMock)).toEqual([`/api/v1/intel/indicators/${OTHER_ID}`]);
+  });
+
+  it("says the indicator was already gone when the API no longer has it", async () => {
+    stubFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? error(404, "not_found", "Indicator not found.")
+        : jsonResponse(makeInvestigation()),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "CipherForge assessment" });
+
+    await user.click(screen.getByRole("button", { name: "Delete indicator" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete indicator" }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "Indicator already gone" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Nothing was deleted. 1 indicator was already gone."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the record and the dialog, and says why, when the deletion fails", async () => {
+    stubFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? error(500, "internal_error", "Something failed.")
+        : jsonResponse(makeInvestigation()),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "CipherForge assessment" });
+
+    await user.click(screen.getByRole("button", { name: "Delete indicator" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete indicator" }),
+    );
+
+    const alert = await within(screen.getByRole("dialog")).findByRole("alert");
+    expect(alert).toHaveTextContent("The API reported an error");
+    expect(screen.queryByRole("heading", { name: "Indicator deleted" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "CipherForge assessment" })).toBeInTheDocument();
+  });
+
+  it("does not offer to delete while a re-check is running, or before the record is shown", async () => {
+    stubFetch((_url, init) =>
+      init?.method === "POST"
+        ? new Promise<Response>(() => undefined)
+        : jsonResponse(makeInvestigation()),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    expect(screen.queryByRole("button", { name: "Delete indicator" })).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "CipherForge assessment" });
+
+    await user.click(screen.getByRole("button", { name: "Re-check with providers" }));
+    const busy = screen.getByRole("button", { name: "Delete indicator" });
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    await user.click(busy);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers no delete button when the record cannot be loaded", async () => {
+    stubFetch(() => error(500, "internal_error", "Something failed."));
+    renderDetail();
+
+    await screen.findByRole("alert");
+
+    expect(screen.queryByRole("button", { name: "Delete indicator" })).not.toBeInTheDocument();
+  });
+});

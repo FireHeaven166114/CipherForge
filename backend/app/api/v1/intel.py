@@ -11,6 +11,8 @@ from app.api.deps import DbSession, IntelServiceDep
 from app.correlation.scoring import Classification
 from app.models.enums import IndicatorType
 from app.schemas.intel import (
+    DeleteIndicatorsRequest,
+    DeleteIndicatorsResponse,
     IndicatorPage,
     InvestigateRequest,
     InvestigationResponse,
@@ -19,11 +21,12 @@ from app.schemas.intel import (
 )
 from app.security.auth import Principal, require_roles
 from app.security.roles import Role
-from app.services.intel_service import RequestContext, SortOrder
+from app.services.intel_service import IndicatorDeletedError, RequestContext, SortOrder
 from app.services.normalization import InvalidIndicatorError
 
 logger = logging.getLogger("cipherforge.intel")
 
+HTTP_CONFLICT = 409
 HTTP_NOT_FOUND = 404
 HTTP_UNPROCESSABLE = 422
 HTTP_TOO_MANY_REQUESTS = 429
@@ -93,6 +96,12 @@ def investigate(
     except InvalidIndicatorError as exc:
         # The message never echoes the input.
         raise HTTPException(status_code=HTTP_UNPROCESSABLE, detail=str(exc)) from None
+    except IndicatorDeletedError:
+        raise HTTPException(
+            status_code=HTTP_CONFLICT,
+            detail="The indicator was deleted while it was being investigated. Investigate it "
+            "again to store it anew.",
+        ) from None
 
 
 @router.get(
@@ -108,6 +117,45 @@ def get_indicator(
     if response is None:
         raise HTTPException(status_code=HTTP_NOT_FOUND, detail="Indicator not found.")
     return response
+
+
+@router.delete(
+    "/indicators/{indicator_id}",
+    response_model=DeleteIndicatorsResponse,
+    summary="Delete one indicator and the provider answers stored with it",
+)
+def delete_indicator(
+    indicator_id: uuid.UUID,
+    request: Request,
+    principal: AnalystPrincipal,
+    service: IntelServiceDep,
+    session: DbSession,
+) -> DeleteIndicatorsResponse:
+    """Removes the rows from the database. The audit trail is append-only: it keeps its record
+    of the indicator's lookups, and gains a record of this deletion."""
+    context = RequestContext(actor=principal.subject, source_ip=client_address(request))
+    result = service.delete_indicators(session, context, [indicator_id])
+    if not result.deleted:
+        raise HTTPException(status_code=HTTP_NOT_FOUND, detail="Indicator not found.")
+    return result
+
+
+@router.post(
+    "/indicators/bulk-delete",
+    response_model=DeleteIndicatorsResponse,
+    summary="Delete several indicators, and the provider answers stored with them, at once",
+)
+def delete_indicators(
+    payload: DeleteIndicatorsRequest,
+    request: Request,
+    principal: AnalystPrincipal,
+    service: IntelServiceDep,
+    session: DbSession,
+) -> DeleteIndicatorsResponse:
+    """Only the named indicators are removed. Ids that match nothing are listed in ``not_found``
+    and are not an error, so a repeated request is harmless."""
+    context = RequestContext(actor=principal.subject, source_ip=client_address(request))
+    return service.delete_indicators(session, context, payload.indicator_ids)
 
 
 @router.get(

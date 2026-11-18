@@ -4,6 +4,7 @@ import {
   PROVIDER_STATUSES,
   type ActivityRow,
   type DayPoint,
+  type DeleteResult,
   type FacetEntry,
   type Indicator,
   type IndicatorPage,
@@ -147,6 +148,15 @@ export function isIndicatorPage(value: unknown): value is IndicatorPage {
     isCount(value.total) &&
     isCount(value.limit) &&
     isCount(value.offset)
+  );
+}
+
+export function isDeleteResult(value: unknown): value is DeleteResult {
+  return (
+    isRecord(value) &&
+    isStringArray(value.deleted) &&
+    isStringArray(value.not_found) &&
+    isCount(value.observations_removed)
   );
 }
 

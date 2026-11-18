@@ -5,7 +5,7 @@ import { extname, join, relative, resolve } from "node:path";
 
 import type { APIResponse, Page } from "@playwright/test";
 
-import { fetchOverview } from "./api";
+import { deleteViaApi, fetchIndicators, fetchOverview } from "./api";
 import { expect, test } from "./fixtures";
 import { openInvestigate } from "./open";
 import { escapeRegExp, must } from "./text";
@@ -623,16 +623,72 @@ test.describe("the API behind the console", () => {
     expect((await fetchOverview(request)).kpis.lookups_24h).toBe(before);
   });
 
-  test("offers nothing that changes or deletes stored indicators", async ({ request }) => {
+  test("offers no way to change a stored indicator, or to delete more than it is told to", async ({ request }) => {
     const record = `/api/v1/intel/indicators/${NO_SUCH_ID}`;
     const attempts = [
-      await request.delete(record),
       await request.put(record, { data: {} }),
       await request.patch(record, { data: {} }),
       await request.post("/api/v1/intel/indicators", { data: {} }),
+      // Deletion is by id: no method removes a whole collection, or whatever a filter matches.
       await request.delete("/api/v1/intel/indicators"),
+      await request.delete("/api/v1/intel/indicators?q=e2e"),
     ];
     expect(attempts.map((response) => response.status())).toEqual([405, 405, 405, 405, 405]);
+  });
+
+  test("deletes only the indicators it is given by id", async ({ request, seed }) => {
+    const { search, items } = await seed(3);
+    const id = must(items[0], "an indicator").indicator_id;
+    const bulk = "/api/v1/intel/indicators/bulk-delete";
+    const refused = [
+      await request.post(bulk, { data: { q: search } }),
+      await request.post(bulk, { data: { all: true } }),
+      await request.post(bulk, { data: { indicator_ids: [id], q: "" } }),
+      await request.post(bulk, { data: { indicator_ids: [] } }),
+      await request.post(bulk, { data: { indicator_ids: ["not-a-uuid"] } }),
+      await request.post(bulk, { data: { indicator_ids: Array.from({ length: 101 }, () => NO_SUCH_ID) } }),
+      await request.delete(`/api/v1/intel/indicators/not-a-uuid`),
+    ];
+    expect(refused.map((response) => response.status())).toEqual([422, 422, 422, 422, 422, 422, 422]);
+    expect((await fetchIndicators(request, { q: search })).total, "nothing was deleted").toBe(3);
+
+    const result = await deleteViaApi(request, [id]);
+    expect(result.deleted).toEqual([id]);
+    expect((await fetchIndicators(request, { q: search })).total, "only the named indicator went").toBe(2);
+  });
+
+  test("cannot be made to delete an indicator by a page on another site", async ({ request, seed }) => {
+    const { search, items } = await seed(1);
+    const id = must(items[0], "an indicator").indicator_id;
+    const bulk = "/api/v1/intel/indicators/bulk-delete";
+    // A page on another site can send these without asking the browser's permission first.
+    const asText = await request.post(bulk, {
+      headers: { "content-type": "text/plain", origin: EVIL_ORIGIN },
+      data: JSON.stringify({ indicator_ids: [id] }),
+    });
+    const asForm = await request.post(bulk, { headers: { origin: EVIL_ORIGIN }, form: { indicator_ids: id } });
+    expect([asText.status(), asForm.status()]).toEqual([422, 422]);
+
+    // A DELETE, or a JSON body, needs the browser's permission first, and the API never gives it.
+    const preflights = [
+      await request.fetch(`/api/v1/intel/indicators/${id}`, {
+        method: "OPTIONS",
+        headers: { origin: EVIL_ORIGIN, "access-control-request-method": "DELETE" },
+      }),
+      await request.fetch(bulk, {
+        method: "OPTIONS",
+        headers: {
+          origin: EVIL_ORIGIN,
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type",
+        },
+      }),
+    ];
+    for (const preflight of preflights) {
+      expect(headerValues(preflight, "access-control-allow-origin")).toEqual([]);
+      expect(headerValues(preflight, "access-control-allow-methods")).toEqual([]);
+    }
+    expect((await fetchIndicators(request, { q: search })).total, "the indicator is still stored").toBe(1);
   });
 
   test("explains a refusal in a small envelope that leaks no internals and echoes nothing back", async ({ request }) => {

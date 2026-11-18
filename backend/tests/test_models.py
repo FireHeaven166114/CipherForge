@@ -7,6 +7,7 @@ Each test runs against a database built by the real migrations: SQLite always, P
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -138,6 +139,35 @@ def test_deleting_an_indicator_removes_its_observations(session: Session) -> Non
 
     remaining = session.scalars(select(ThreatObservation)).all()
     assert [row.indicator_id for row in remaining] == [other.id]
+
+
+@pytest.mark.parametrize(
+    ("override", "left_behind"),
+    [(None, False), ("OFF", True)],
+    ids=["as-configured", "control-with-the-setting-off"],
+)
+def test_sqlite_overwrites_deleted_rows_instead_of_leaving_them_in_the_file(
+    tmp_path: Path, make_settings: Callable[..., Settings], override: str | None, left_behind: bool
+) -> None:
+    marker = "DELETED-INDICATOR-MARKER-8f3a1c"
+    path = tmp_path / "scratch.db"
+    engine = build_engine(make_settings(database_url=f"sqlite+pysqlite:///{path.as_posix()}"))
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE scratch (id INTEGER PRIMARY KEY, value TEXT)"))
+            connection.execute(text("INSERT INTO scratch (value) VALUES (:v)"), {"v": marker})
+        assert marker.encode() in path.read_bytes()
+
+        with engine.begin() as connection:
+            if override is not None:  # proves that the check below can fail
+                connection.exec_driver_sql(f"PRAGMA secure_delete={override}")
+            connection.execute(text("DELETE FROM scratch"))
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM scratch")).scalar() == 0
+    finally:
+        engine.dispose()
+
+    assert (marker.encode() in path.read_bytes()) is left_behind
 
 
 def test_a_source_in_use_cannot_be_deleted(session: Session) -> None:

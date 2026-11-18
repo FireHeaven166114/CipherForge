@@ -43,6 +43,7 @@ problem. Submitted values are never echoed back, and server errors never expose 
 | 403 | `forbidden` | Authenticated, but the role is not allowed. |
 | 404 | `not_found` | Unknown route or resource. |
 | 405 | `method_not_allowed` | The route does not support that method. |
+| 409 | `conflict` | The state changed under the request: an indicator was deleted while it was being investigated. |
 | 413 | `payload_too_large` | Body over the limit (nginx allows 64 KB). |
 | 422 | `validation_error` | The request body or parameters failed validation. |
 | 429 | `rate_limited` | Too many investigations. `Retry-After` gives the seconds to wait. |
@@ -89,8 +90,8 @@ claim.
 All routes are under `/api/v1/intel` and need the `SecurityAnalyst` or `Admin` role: a request without
 a valid token gets `401`, and one with another role gets `403`. How results are produced is explained in
 [threat-intelligence.md](threat-intelligence.md). The dashboard uses `POST /investigate`, `GET /overview`,
-`GET /indicators`, `GET /indicators/{id}` and `GET /stats` (to warn when the providers are simulated),
-and its status page uses `/health` and `/ready`.
+`GET /indicators`, `GET /indicators/{id}`, `DELETE /indicators/{id}`, `POST /indicators/bulk-delete` and
+`GET /stats` (to warn when the providers are simulated), and its status page uses `/health` and `/ready`.
 
 ### `POST /api/v1/intel/investigate`
 
@@ -110,6 +111,9 @@ Unknown fields are rejected. Outcomes:
   audited, as `rejected`.
 - `429 rate_limited`: too many investigations. The limit is per user (default 30 a minute) and
   `Retry-After` gives the seconds to wait.
+- `409 conflict`: another request deleted this indicator while the providers were being asked. The
+  answers have nothing left to attach to and are dropped. The lookup is still audited (as `partial`),
+  and investigating the value again stores it as a new indicator.
 
 Example for `{"indicator": "malware[.]example[.]org"}`, abridged. The values are illustrative, and
 OTX is the only provider configured:
@@ -234,6 +238,55 @@ the `indicator` fields shown above.
 falls in `informational` even though nothing was checked. Combine the two filters to tell them
 apart: the dashboard sends `assessed=true` with a band (High and critical together are
 `classification=high&classification=critical&assessed=true`), and `assessed=false` alone for "Not assessed".
+
+### `DELETE /api/v1/intel/indicators/{indicator_id}`
+
+Deletes one stored indicator and every provider answer stored for it. The rows are removed from the
+database; nothing is only hidden or marked. The answer has the same body as the bulk endpoint below, with
+the id in `deleted`. `404 not_found` when no such indicator is stored (so a second delete of the same id
+is a `404`) and `422` when the id is not a UUID.
+
+### `POST /api/v1/intel/indicators/bulk-delete`
+
+Deletes several indicators the same way, in one transaction. It is a `POST` with a body rather than a
+`DELETE`, because the body of a `DELETE` has no defined meaning (some proxies drop it) and up to 100 ids
+do not belong in a URL.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `indicator_ids` | array of 1 to 100 UUIDs | Repeated ids count once. Unknown fields are rejected. |
+
+There is deliberately no "delete everything that matches these filters": a request removes only what it
+names, so a filter that matches more than the analyst saw can never take extra indicators with it. The
+dashboard sends the ids of the rows the analyst ticked.
+
+```json
+{
+  "deleted": ["6f1c7d52-3a0e-4c0b-9d57-2f6b3f0a9c11"],
+  "not_found": ["0b1e5d7c-8a4f-4f43-9d0a-1c2a6d6b7e33"],
+  "observations_removed": 2
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `deleted` | The indicators this request removed, in the order they were sent. |
+| `not_found` | Ids that matched nothing: they were deleted already (perhaps by another analyst a moment ago) or were never stored. This is **not** an error. The response is still `200`, so repeating a request is harmless. |
+| `observations_removed` | How many stored provider answers went with the deleted indicators. |
+
+What deleting does, and what it does not:
+
+- It removes the `threat_indicators` rows and their `threat_observations` rows, so the indicators are gone
+  from the list, the overview, the search and the detail endpoint. Investigating the same value again
+  stores a new indicator with a new id and asks the providers again.
+- It never edits the audit trail, which is append-only (see [security.md](security.md)). Each deleted
+  indicator adds one `IOC_DELETE` audit row (actor, target `type:value`, source address, and how many
+  answers went with it), written in the same transaction as the deletion. The earlier `IOC_LOOKUP` rows
+  stay as they were. **The audit rows still name the value**, and no endpoint deletes or edits them.
+- The overview's lookup figures (`lookups_24h`, `series[].lookups`, `activity`) are counted from the audit
+  trail, so they do not drop. Its indicator figures (`total_indicators`, `new_indicators_24h`,
+  `top_risk`, `recent`, the matrix and the breakdowns) are counted from what is stored, so they do.
+- Both routes need the `SecurityAnalyst` or `Admin` role. Neither calls a provider.
 
 ### `GET /api/v1/intel/stats`
 

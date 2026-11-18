@@ -26,7 +26,8 @@ const NO_SUCH_ID = "00000000-0000-4000-8000-000000000000";
 const EN_DASH = "\u2013";
 const EM_DASH = "\u2014";
 
-const COLUMNS = ["Indicator", "Type", "Classification", "Score", "Confidence", "Sources", "Status", "Last checked"];
+// The first header is the tick box that selects every row; the last holds each row's delete button.
+const COLUMNS = ["Select", "Indicator", "Type", "Classification", "Score", "Confidence", "Sources", "Status", "Last checked", "Actions"];
 const ALL_CLASSIFICATIONS = [
   "All classifications",
   "High or critical",
@@ -122,7 +123,8 @@ test.describe("the list", () => {
     for (const [index, record] of stored.items.entries()) {
       const row = rows.nth(index);
       const answered = record.confidence > 0;
-      const cells = (await row.getByRole("cell").allTextContents()).map((text) => text.trim());
+      // The row's own cells follow its tick box, which has no text, and come before its delete button.
+      const cells = (await row.getByRole("cell").allTextContents()).map((text) => text.trim()).slice(1);
       const band = answered ? CLASSIFICATION_LABELS[record.classification] : "Not assessed";
 
       const link = row.getByRole("rowheader").getByRole("link");
@@ -151,7 +153,7 @@ test.describe("the list", () => {
     await expect(row).toHaveCount(1);
     await expect(row).toContainText("Not assessed");
     await expect(row).not.toContainText("Informational");
-    expect((await row.getByRole("cell").allTextContents()).map((text) => text.trim()).slice(2, 4)).toEqual([EM_DASH, EM_DASH]);
+    expect((await row.getByRole("cell").allTextContents()).map((text) => text.trim()).slice(3, 5)).toEqual([EM_DASH, EM_DASH]);
   });
 });
 
@@ -174,7 +176,7 @@ test.describe("filters", () => {
       await expectAddress(page, `/indicators?type=${type}`);
       await expectFound(page, stored.total);
       await expectShown(page, valuesOf(stored.items));
-      expect(await page.locator("tbody tr td:nth-of-type(1)").allTextContents()).toEqual(
+      expect(await page.locator("tbody tr td:nth-of-type(2)").allTextContents()).toEqual(
         stored.items.map(() => TYPE_LABELS[type]),
       );
     });
@@ -197,7 +199,7 @@ test.describe("filters", () => {
       await expectFound(page, stored.total);
 
       await expectShown(page, valuesOf(stored.items));
-      for (const badge of await page.locator("tbody tr td:nth-of-type(2)").allTextContents()) {
+      for (const badge of await page.locator("tbody tr td:nth-of-type(3)").allTextContents()) {
         expect(choice.badges.some((label) => badge.trim().endsWith(label)), `${badge} is one of ${choice.badges.join(", ")}`).toBe(true);
       }
     });
@@ -213,7 +215,7 @@ test.describe("filters", () => {
     await expect(page.getByRole("table", { name: "Indicators, sorted by highest risk" })).toBeVisible();
     await expectShown(page, valuesOf(byRisk.items));
 
-    const scores = (await page.locator("tbody tr td:nth-of-type(3)").allTextContents()).map((text) =>
+    const scores = (await page.locator("tbody tr td:nth-of-type(4)").allTextContents()).map((text) =>
       text.trim() === EM_DASH ? 0 : Number(text.trim()),
     );
     expect(scores).toEqual([...scores].sort((a, b) => b - a));

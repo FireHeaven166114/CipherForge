@@ -1,14 +1,17 @@
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import ErrorNotice from "../components/ErrorNotice";
 import PageHeader from "../components/hud/PageHeader";
+import { TrashIcon } from "../components/hud/Icons";
 import Panel from "../components/hud/Panel";
+import DeleteIndicatorsDialog, { type DeleteTarget } from "../components/intel/DeleteIndicatorsDialog";
 import IndicatorTable from "../components/intel/IndicatorTable";
 import LoadingNote from "../components/LoadingNote";
 import Pagination from "../components/Pagination";
-import { BUTTON, FIELD, LABEL, LINK } from "../components/styles";
+import { BUTTON, DANGER_BUTTON, FIELD, LABEL, LINK } from "../components/styles";
 import { CLASSIFICATIONS_BY_SEVERITY, CLASSIFICATION_META } from "../features/intel/classification";
+import { describeDeletion } from "../features/intel/deletion";
 import {
   MAX_PAGE,
   MAX_SEARCH_LENGTH,
@@ -21,14 +24,18 @@ import {
 } from "../features/intel/filters";
 import { INDICATOR_TYPE_LABELS } from "../features/intel/labels";
 import { useApiResource } from "../hooks/useApiResource";
+import { useDeleteIndicators } from "../hooks/useDeleteIndicators";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { listIndicators } from "../services/intelService";
-import { INDICATOR_TYPES } from "../types/intel";
+import { INDICATOR_TYPES, type Indicator } from "../types/intel";
 
 interface Option {
   value: string;
   label: string;
 }
+
+const NO_ITEMS: readonly Indicator[] = [];
 
 const TYPE_OPTIONS: Option[] = [
   { value: "", label: "All types" },
@@ -119,6 +126,38 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
   );
 }
 
+/** Tells how many rows are ticked and offers to delete them; with none ticked, how to tick some. */
+function SelectionToolbar({
+  count,
+  onClear,
+  onDelete,
+}: {
+  count: number;
+  onClear: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <p aria-live="polite" className="sr-only">
+        {count === 0 ? "" : `${count} selected`}
+      </p>
+      {count === 0 ? (
+        <p className="text-xs text-ink-300">Tick rows to delete them. Hold Shift to tick a range.</p>
+      ) : (
+        <>
+          <button type="button" onClick={onClear} className={BUTTON}>
+            Clear selection
+          </button>
+          <button type="button" onClick={onDelete} className={DANGER_BUTTON}>
+            <TrashIcon className="size-4" />
+            Delete selected ({count})
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function IndicatorsPage() {
   useDocumentTitle("Indicators");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -132,6 +171,21 @@ export default function IndicatorsPage() {
   );
   const { state, reload } = useApiResource(load);
 
+  const items = state.status === "success" ? state.data.items : NO_ITEMS;
+  const rowIds = useMemo(() => items.map((item) => item.indicator_id), [items]);
+  // Ticks belong to the page and filters they were made on, so any change of address clears them.
+  const selection = useRowSelection(queryString, rowIds);
+  const deletion = useDeleteIndicators();
+  const [targets, setTargets] = useState<readonly DeleteTarget[] | null>(null);
+  const [notice, setNotice] = useState<{ text: string } | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+
+  // The button that opened the dialog is usually gone once the list reloads, and focus would be
+  // lost with it. The notice is a steady place to put it.
+  useEffect(() => {
+    if (notice !== null) noticeRef.current?.focus();
+  }, [notice]);
+
   const update = (changes: Partial<IndicatorFilters>) =>
     setSearchParams(writeFilters({ ...filters, page: 1, ...changes }));
   const goToPage = (page: number) => setSearchParams(writeFilters({ ...filters, page }));
@@ -139,6 +193,31 @@ export default function IndicatorsPage() {
 
   const filtered = hasActiveFilters(filters);
   const total = state.status === "success" ? state.data.total : null;
+
+  function askToDelete(chosen: readonly Indicator[]) {
+    deletion.reset();
+    setTargets(chosen.map((item) => ({ id: item.indicator_id, value: item.indicator_value })));
+  }
+
+  function cancelDelete() {
+    deletion.reset();
+    setTargets(null);
+  }
+
+  async function confirmDelete() {
+    if (targets === null) return;
+    const result = await deletion.run(targets.map((target) => target.id));
+    // A failure leaves the dialog open, showing why, so the analyst can try again or give up.
+    if (result === null) return;
+
+    selection.drop([...result.deleted, ...result.not_found]);
+    setTargets(null);
+    setNotice({ text: describeDeletion(result) });
+    // This page may now be past the end of the list: go to the last page that still has rows.
+    const lastPage = Math.max(1, Math.ceil(((total ?? 0) - result.deleted.length) / PAGE_SIZE));
+    if (filters.page > lastPage) goToPage(lastPage);
+    else reload();
+  }
 
   return (
     <div className="space-y-6">
@@ -191,15 +270,54 @@ export default function IndicatorsPage() {
         </div>
       </Panel>
 
+      {notice !== null ? (
+        <div
+          ref={noticeRef}
+          role="status"
+          tabIndex={-1}
+          className="cf-plate flex flex-wrap items-center justify-between gap-3 rounded-ui border border-ok/50 p-4 text-sm text-ink-100 [--plate:var(--color-ok)]"
+        >
+          <p className="flex items-center gap-2">
+            <span aria-hidden="true" className="text-ok">
+              ✓
+            </span>
+            {notice.text}
+          </p>
+          <button type="button" onClick={() => setNotice(null)} className={BUTTON}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
       {state.status === "loading" ? <LoadingNote>Loading indicators…</LoadingNote> : null}
       {state.status === "error" ? <ErrorNotice error={state.error} onRetry={reload} /> : null}
 
       {state.status === "success" ? (
         state.data.items.length > 0 ? (
-          <Panel title="Investigated indicators" code="IND" bodyClassName="p-0">
+          <Panel
+            title="Investigated indicators"
+            code="IND"
+            bodyClassName="p-0"
+            actions={
+              <SelectionToolbar
+                count={selection.selected.length}
+                onClear={selection.clear}
+                onDelete={() =>
+                  askToDelete(items.filter((item) => selection.isSelected(item.indicator_id)))
+                }
+              />
+            }
+          >
             <IndicatorTable
               indicators={state.data.items}
               caption={`Indicators, sorted by ${filters.sort === "risk" ? "highest risk" : "most recent check"}`}
+              selection={{
+                isSelected: selection.isSelected,
+                overall: selection.overall,
+                onToggle: selection.set,
+                onToggleAll: selection.setAll,
+              }}
+              onDelete={(indicator) => askToDelete([indicator])}
             />
             <div className="border-t border-ink-700/70 px-4 py-3">
               <Pagination
@@ -238,6 +356,14 @@ export default function IndicatorsPage() {
           </Panel>
         )
       ) : null}
+
+      <DeleteIndicatorsDialog
+        targets={targets}
+        busy={deletion.busy}
+        error={deletion.error}
+        onConfirm={() => void confirmDelete()}
+        onCancel={cancelDelete}
+      />
     </div>
   );
 }

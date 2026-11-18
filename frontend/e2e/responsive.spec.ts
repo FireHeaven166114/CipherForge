@@ -2,7 +2,7 @@ import type { APIRequestContext, Page } from "@playwright/test";
 
 import { firstIndicator, fresh } from "./api";
 import { settle } from "./axe";
-import { expect, test } from "./fixtures";
+import { type Guard, type Seed, expect, test } from "./fixtures";
 import { expectFits, expectOnScreen, frames, sidewaysOverflow } from "./layout";
 import { investigate, openInvestigate, openList, openOverview, openRecord, openStatus } from "./open";
 import { palette } from "./pages";
@@ -37,6 +37,18 @@ const LOOKED_UP = fresh.domain();
 interface Tools {
   page: Page;
   request: APIRequestContext;
+  seed: Seed;
+  guard: Guard;
+}
+
+const SELECT_ALL = "Select all indicators on this page";
+
+/** Stores indicators for the scene, shows them in the list and ticks every one of them. */
+async function openSeededAndTick(page: Page, seed: Seed, count: number): Promise<void> {
+  const { search } = await seed(count);
+  await openList(page, `?q=${search}`);
+  await page.getByRole("checkbox", { name: SELECT_ALL }).check();
+  await expect(page.getByRole("button", { name: `Delete selected (${count})`, exact: true })).toBeVisible();
 }
 
 const SCENES: Record<string, (tools: Tools) => Promise<void>> = {
@@ -57,8 +69,39 @@ const SCENES: Record<string, (tools: Tools) => Promise<void>> = {
     await expect(page.getByRole("link", { name: "Open the saved record" })).toBeVisible();
   },
   "the indicators list": ({ page }) => openList(page),
+  "the indicators list with rows ticked": ({ page, seed }) => openSeededAndTick(page, seed, 3),
+  "the confirmation to delete several indicators": async ({ page, seed }) => {
+    await openSeededAndTick(page, seed, 7);
+    await page.getByRole("button", { name: "Delete selected (7)", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Delete 7 indicators?", exact: true })).toBeVisible();
+  },
+  // The tallest the dialog gets: the list of values, the explanation and the notice of a failure.
+  "the confirmation after a deletion failed": async ({ page, seed, guard }) => {
+    guard.expectStatus(500);
+    await page.route(/\/api\/v1\/intel\/indicators\/bulk-delete$/, (route) =>
+      route.fulfill({
+        status: 500,
+        json: { error: { code: "internal_error", message: "The service is having a problem.", correlation_id: "resp-ref-500" } },
+      }),
+    );
+    await openSeededAndTick(page, seed, 7);
+    await page.getByRole("button", { name: "Delete selected (7)", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Delete 7 indicators?", exact: true });
+    await dialog.getByRole("button", { name: "Delete 7 indicators", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toContainText("Reference: resp-ref-500");
+  },
   "a stored record": async ({ page, request }) => {
     await openRecord(page, (await firstIndicator(request, { sort: "risk" })).indicator_id);
+  },
+  "a stored record after it is deleted": async ({ page, seed }) => {
+    const { items } = await seed(1);
+    await openRecord(page, must(items[0], "an indicator").indicator_id);
+    await page.getByRole("button", { name: "Delete indicator", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Delete this indicator?", exact: true })
+      .getByRole("button", { name: "Delete indicator", exact: true })
+      .click();
+    await expect(page.getByRole("heading", { level: 1, name: "Indicator deleted" })).toBeVisible();
   },
   "the system status": ({ page }) => openStatus(page),
 };
@@ -147,8 +190,8 @@ for (const screen of SCREENS) {
     });
 
     for (const [name, open] of Object.entries(SCENES)) {
-      test(`${name} fits the screen`, async ({ page, request }) => {
-        await open({ page, request });
+      test(`${name} fits the screen`, async ({ page, request, seed, guard }) => {
+        await open({ page, request, seed, guard });
         const dialog = page.getByRole("dialog");
         if ((await dialog.count()) > 0) await expectOnScreen(dialog, screen);
         await expectFits(page, name);
@@ -329,8 +372,8 @@ test.describe("text enlarged to 200%", () => {
   test.use({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
 
   for (const [name, open] of Object.entries(SCENES)) {
-    test(`${name} still fits`, async ({ page, request }) => {
-      await open({ page, request });
+    test(`${name} still fits`, async ({ page, request, seed, guard }) => {
+      await open({ page, request, seed, guard });
       await page.evaluate(() => {
         const sheet = new CSSStyleSheet();
         sheet.replaceSync("html { font-size: 200% !important; }");

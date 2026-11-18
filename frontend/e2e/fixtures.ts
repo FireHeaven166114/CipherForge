@@ -1,5 +1,10 @@
 import { expect, test as base } from "@playwright/test";
 
+import { type SeededIndicators, purgeIndicators, seedIndicators } from "./api";
+
+/** Stores new indicators for the test; whatever is left of them is deleted when the test ends. */
+export type Seed = (count: number) => Promise<SeededIndicators>;
+
 /** What a test says it expects the browser to report, so everything else counts as a failure. */
 export interface Guard {
   /** HTTP statuses the test provokes on purpose, such as a 404 for an unknown record. */
@@ -23,7 +28,16 @@ interface CspReport {
  * request, an unexpected HTTP error status or a CSP violation fails it, even when the assertions
  * about the page itself pass.
  */
-export const test = base.extend<{ guard: Guard }>({
+export const test = base.extend<{ guard: Guard; seed: Seed }>({
+  seed: async ({ request }, use) => {
+    const searches: string[] = [];
+    await use(async (count) => {
+      const seeded = await seedIndicators(request, count);
+      searches.push(seeded.search);
+      return seeded;
+    });
+    for (const search of searches) await purgeIndicators(request, search);
+  },
   guard: [
     async ({ page }, use) => {
       const problems: string[] = [];

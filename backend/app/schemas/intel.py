@@ -24,6 +24,28 @@ class InvestigateRequest(BaseModel):
     refresh: bool = False
 
 
+# As many as one page of the list can hold (its `limit` is capped at 100), so a whole page can be
+# selected and deleted in one request.
+MAX_DELETE_BATCH = 100
+
+
+class DeleteIndicatorsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Ids only: there is deliberately no "delete everything matching these filters", so a request
+    # can never remove more than the caller named. Repeated ids count once.
+    indicator_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_DELETE_BATCH)
+
+
+class DeleteIndicatorsResponse(BaseModel):
+    # The indicators this request removed.
+    deleted: list[uuid.UUID]
+    # Ids that matched nothing: already deleted, or never stored. That is not an error.
+    not_found: list[uuid.UUID]
+    # Provider answers that were removed along with the deleted indicators.
+    observations_removed: int
+
+
 class IndicatorOut(BaseModel):
     indicator_id: uuid.UUID
     indicator_type: IndicatorType

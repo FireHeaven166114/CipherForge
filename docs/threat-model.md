@@ -69,7 +69,7 @@ treated as untrusted data too: they are validated and bounded before use.
 | 16 | Container breakout or privilege escalation | Elevation | Non-root users, all capabilities dropped, `no-new-privileges`, read-only root filesystem for the API. | Partly mitigated |
 | 17 | Request flood against the API | DoS | A per-user limit on investigations (30 a minute, in memory and per process) with `429` and `Retry-After`; nginx body limit and timeouts. Other routes and unauthenticated requests are not throttled. | Partly mitigated |
 | 18 | Key service (JWKS) outage causes auth failures | DoS | Keys cached for an hour; outage returns 503 with a distinct code. | Mitigated |
-| 19 | Actions not attributable to a user | Repudiation | Correlation IDs on every request; the authenticated subject is logged on denials; every investigation (including refused input) is written to the audit table with actor, target, result and correlation ID. Reads of stored indicators are not audited. | Partly mitigated |
+| 19 | Actions not attributable to a user | Repudiation | Correlation IDs on every request; the authenticated subject is logged on denials; every investigation (including refused input) and every deletion of a stored indicator is written to the audit table with actor, target, result and correlation ID. Reads of stored indicators are not audited. | Partly mitigated |
 | 20 | Vulnerable or malicious dependency | Tampering | Exact pins, lockfile, `pip-audit`, `npm audit`, Dependabot, SHA-pinned Actions. Transitive Python packages are not hash-locked. Phase 3c added one runtime dependency, anime.js 4.5.0 (MIT, no dependencies of its own), imported from a single file and exercised under the strict CSP by every browser test. | Partly mitigated |
 | 21 | Compromised CI or build | Tampering | Least-privilege workflow, no persisted credentials, no secrets in the pipeline. Image signing and scanning are not in place. | Partly mitigated |
 | 22 | Weak or default database password | Spoofing | Compose requires `POSTGRES_PASSWORD`, the API refuses the `CHANGE_ME` template password in production. | Mitigated |
@@ -81,7 +81,7 @@ treated as untrusted data too: they are validated and bounded before use.
 | 28 | Provider API key leaked through logs, responses, the wrong container or the HTTP client | Information disclosure | `SecretStr` settings masked by value in logs; never returned (the stats endpoint reports only whether one is set); given to the `backend` container only, not the migration job; HTTP client request logging silenced because it records full URLs. Each is tested. The `.env` file on the host is the operator's to protect. | Mitigated |
 | 29 | A single source, a stale answer or a poisoned feed mislabels an indicator | Tampering (analyst decisions) | Each provider is shown on its own; no score from one source exceeds 60; recency and corroboration are explicit factors; uncertainty and missing sources are listed; CipherForge recommends actions and never blocks anything. Feeds can still be wrong, so scores are advice. | Partly mitigated |
 | 30 | The audit source address is spoofed through `X-Forwarded-For` | Repudiation | The header is honoured only from private proxy networks; the value is stored only if it is a valid IP address; the actor comes from the token. A peer inside the trusted ranges that can reach the backend directly can still choose the recorded address. | Partly mitigated |
-| 31 | Audit rows altered or deleted | Repudiation, Tampering | The application has no update or delete path; database triggers reject `UPDATE` and `DELETE` on SQLite and PostgreSQL. A database superuser can drop the triggers. | Partly mitigated |
+| 31 | Audit rows altered or deleted | Repudiation, Tampering | The application has no update or delete path for audit rows, and deleting an indicator only adds an `IOC_DELETE` row; database triggers reject `UPDATE` and `DELETE` on SQLite and PostgreSQL. A database superuser can drop the triggers. | Partly mitigated |
 | 32 | An analyst sends internal or sensitive indicators to a third party | Information disclosure | Non-public addresses and names are refused. Looking up anything else discloses it to the providers by design; the lookups are audited, the Investigate page says so beside the button, and the privacy note in [threat-intelligence.md](threat-intelligence.md#privacy-and-abuse-considerations) applies. | Accepted, documented |
 | 33 | Provider data steers a link in the dashboard: a hostile OTX pulse id or ATT&CK identifier makes the UI link to a phishing page or a `javascript:` URL | Tampering, Spoofing | Links to other sites are built only from a fixed base and an identifier matching a strict pattern; anything else is shown as plain text. Links open with `rel="noopener noreferrer"`. | Mitigated |
 | 34 | A crafted address makes the dashboard request an unintended API path (for example `/indicators/..%2F..%2Fhealth`) | Tampering | The detail route accepts only a UUID and sends no request otherwise; identifiers placed in a request are URL-encoded. | Mitigated |
@@ -91,6 +91,11 @@ treated as untrusted data too: they are validated and bounded before use.
 | 38 | The dashboard presents a provider-reported country as where an attacker is, or demo data as real data | Tampering (analyst decisions) | The map and the lists say "provider-reported country" and place a marker on a country's label point, not a place; a scope note says what the figures leave out; whenever any provider is simulated, a banner says so on every screen. | Mitigated in the display; feed accuracy is row 29 |
 | 39 | Repeated overview requests exhaust the server: the overview aggregates stored history on every request, and every open dashboard refreshes it each minute | DoS | The route needs the analyst role, is read-only, and scans a bounded amount (the newest 2,000 provider answers, and up to 20,000 lookups and 20,000 new indicators from the last 14 days), reporting when a bound cut a figure short. There is no per-user limit on reads. | Partly mitigated |
 | 40 | The demo server (development sign-in, simulated providers) is run against real data or exposed to a network | Elevation, Tampering | It sets `ENVIRONMENT=development` and `AUTH_MODE=dev` (which production refuses), accepts only a `.db` file inside `backend/.demo/`, makes no outbound calls, is excluded from the container image and is imported by nothing in `app/`. It listens on loopback unless told otherwise. | Mitigated by construction; never bind it to a network |
+| 41 | An analyst deletes the wrong indicators, or far more than they meant, with one click | Tampering (stored intelligence) | Deletion is by exact id only: there is no "delete everything matching this search", and one request carries at most 100 ids. The dashboard ticks only rows on the page being shown, forgets the selection when the filters or the page change, and always asks first, naming the values (or how many) that will go. Each deletion is audited with who did it. There is no undo and no soft delete: a deleted indicator is gone, and investigating it again starts a new record. Any analyst can delete any indicator (indicators have no owner). | Partly mitigated: it is permanent by design |
+| 42 | A page on another site, a form or a crafted link deletes stored indicators | Tampering (CSRF) | Deletion uses `DELETE` and `POST` only, never `GET`, so a link or an image cannot start it. It needs the bearer header, a JSON body of ids that must be UUIDs, and no other content type is accepted, so a cross-site form or `text/plain` request is refused with `422`. CORS is off unless origins are listed, so the preflight for a cross-site `DELETE` is refused by default. Browser and API tests cover each. | Mitigated |
+| 43 | A lookup and a deletion race: the answer of a lookup still waiting on providers is written for an indicator that was just deleted, so it comes back or leaves orphan rows | Tampering | The lookup checks again when it saves. If the indicator has been deleted it is discarded, the caller gets `409`, and the audit row says the result was discarded. SQLite enforces foreign keys, so no answer can be stored for a row that is not there. | Mitigated |
+| 44 | Deleted values remain in the audit trail | Information disclosure | By design: the audit rows are append-only and name the `type:value` they are about, so the older `IOC_LOOKUP` rows and the new `IOC_DELETE` row still contain a deleted indicator. There is deliberately no feature to delete audit rows. Removing a value from the trail is a database administrator's job, outside the application, and it removes evidence. | Accepted, documented |
+| 45 | Deleted data can still be recovered from storage: freed database pages, the write-ahead log, backups, replicas | Information disclosure | SQLite overwrites freed bytes (`secure_delete`) and PostgreSQL reclaims space at vacuum. Copies outside the database file are the operator's to handle. | Partly mitigated; operator responsibility |
 
 ## Residual risks and deliberate limits
 
@@ -103,7 +108,7 @@ treated as untrusted data too: they are validated and bounded before use.
   smoke test is the first real run (see [deployment.md](deployment.md#verification-status)).
 - The provider adapters were tested against recorded responses only, never the live services (see
   [threat-intelligence.md](threat-intelligence.md#verification-status)).
-- The dashboard was checked in a real browser (Microsoft Edge on Windows, 596 automated tests) against
+- The dashboard was checked in a real browser (Microsoft Edge on Windows, 686 automated tests) against
   a stand-in for nginx's headers, and with provider evidence only through simulated and invented
   answers, never the live services (see
   [threat-intelligence.md](threat-intelligence.md#verification-status)).
@@ -114,6 +119,14 @@ Phase 2 adds outbound calls and untrusted third-party data. Rows 24 to 32 above 
 design, the scoring method and the provider behaviour are in
 [threat-intelligence.md](threat-intelligence.md). Later phases that add internal telemetry or any
 automated response must extend this model first.
+
+## Deleting indicators
+
+Analysts can delete stored indicators from the dashboard (one at a time or a ticked selection). Rows
+41 to 45 analyse it, and the controls are listed in [security.md](security.md). The feature adds two
+endpoints (`DELETE /api/v1/intel/indicators/{id}` and `POST /api/v1/intel/indicators/bulk-delete`),
+needs the same role as the rest of `/api/v1/intel`, and adds no way to delete or edit audit rows:
+the audit trail stays append-only and gains an `IOC_DELETE` record for each deletion.
 
 ## Dashboard (Phases 3 to 3c)
 

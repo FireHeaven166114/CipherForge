@@ -47,9 +47,13 @@ how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code.
 - `GET /api/v1/intel/indicators` (search, filter, page), `GET /api/v1/intel/indicators/{id}`,
   `GET /api/v1/intel/stats` and `GET /api/v1/intel/overview` (the aggregates behind the dashboard)
   read the stored results without contacting a provider.
+- `DELETE /api/v1/intel/indicators/{id}` and `POST /api/v1/intel/indicators/bulk-delete` (up to 100
+  ids) delete stored indicators and the provider answers stored for them. See
+  [Deleting indicators](#deleting-indicators-after-phase-3c).
 - Answers are cached in PostgreSQL (6 hours for AbuseIPDB, 12 for OTX by default). A provider that
   is missing, slow or failing shows up as a labelled status; it never breaks the lookup.
-- Every investigation, including refused input, is written to an append-only audit table.
+- Every investigation, including refused input, and every deletion of a stored indicator is written
+  to an append-only audit table.
   Investigations are rate-limited per analyst. Access needs the `SecurityAnalyst` or `Admin` role.
 - Private, loopback and reserved addresses and internal names are refused before any outside call.
 
@@ -68,8 +72,9 @@ the overview described below):
   connected" rather than left out.
 - **Indicators**: search, filter by type and risk (a band, High and Critical together, or Not
   assessed), sort by recent check or by risk, and page through the stored results. The filters live
-  in the address, so a view can be bookmarked.
-- **Indicator details**: the stored record, with a button to re-check it with the providers.
+  in the address, so a view can be bookmarked. Rows can be ticked and deleted (see below).
+- **Indicator details**: the stored record, with a button to re-check it with the providers and a
+  button to delete it.
 - **System status**: API and database health, as before.
 
 An indicator that no provider answered about is shown as **"Not assessed"**, never as low risk or
@@ -140,6 +145,29 @@ the layers.
   installer needs a signed-in membership and its components belong to their authors, and GetLayers'
   terms forbid redistributing its prompts, so everything here was written for this project. See
   [Credits](../README.md#credits).
+
+## Deleting indicators (after Phase 3c)
+
+Added after Phase 3c, with no change to its look or any existing behaviour: analysts can delete the
+indicators they have investigated, one at a time or a selection at once.
+
+- **On the Indicators page** every row has a tick box and a bin button. Tick rows (Shift-click ticks
+  everything between two boxes, the box in the header ticks the whole page) and press **Delete
+  selected**, or press one row's bin. **On an indicator's own page** a **Delete** button does the
+  same for that one indicator.
+- **Always confirmed.** A dialog names what is about to go (the first five values and how many more)
+  and says it cannot be undone. Nothing is deleted until it is confirmed, and Cancel and Escape
+  leave everything as it was.
+- **Really deleted.** The indicator and every provider answer stored for it are removed from the
+  database in one transaction, and from every list, chart and count that shows indicators.
+  Investigating the same value again later starts a new record.
+- **The audit trail is not touched, on purpose.** It stays append-only and there is no feature to
+  delete audit rows. Each deletion adds an `IOC_DELETE` row saying who deleted what and when. Audit
+  rows name the `type:value` they are about, so a deleted value can still be read there. See
+  [security.md](security.md#known-limits-of-the-phase-2-controls).
+- **Safe by construction.** Deletion is by exact id (never "everything matching this search"), at most
+  100 ids a request, for analysts and admins only, and a form or link from another site cannot
+  trigger it. See [security.md](security.md) and [threat-model.md](threat-model.md) (rows 41 to 45).
 
 ## Not implemented yet
 

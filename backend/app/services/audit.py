@@ -14,6 +14,7 @@ from app.core.context import correlation_id_var
 from app.models.audit import AuditLog
 
 IOC_LOOKUP = "IOC_LOOKUP"
+IOC_DELETE = "IOC_DELETE"
 
 RESULT_SUCCESS = "success"
 RESULT_PARTIAL = "partial"

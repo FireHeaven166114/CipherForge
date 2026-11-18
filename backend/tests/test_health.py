@@ -1,6 +1,7 @@
 import re
 from collections.abc import Callable
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import __version__
@@ -102,3 +103,22 @@ def test_cors_allows_only_configured_origins(make_settings: Callable[..., Settin
 
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert "access-control-allow-origin" not in denied.headers
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+def test_cors_preflight_allows_the_methods_the_dashboard_uses(
+    make_settings: Callable[..., Settings], method: str
+) -> None:
+    settings = make_settings(cors_origins="http://localhost:5173")
+    with TestClient(create_app(settings)) as client:
+        preflight = client.options(
+            "/api/v1/intel/indicators/anything",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+
+    assert preflight.status_code == 200
+    assert method in preflight.headers["access-control-allow-methods"]
