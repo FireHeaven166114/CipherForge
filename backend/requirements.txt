@@ -1,6 +1,6 @@
 # Runtime dependencies (direct, pinned). Transitive dependencies float within
 # these constraints; see docs/security.md for the dependency-management plan.
-fastapi==0.162.0
+fastapi==0.165.0
 uvicorn==0.54.0
 pydantic==2.14.2
 pydantic-settings==2.16.2
