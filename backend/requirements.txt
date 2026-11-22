@@ -2,7 +2,7 @@
 # these constraints; see docs/security.md for the dependency-management plan.
 fastapi==0.162.0
 uvicorn==0.54.0
-pydantic==2.14.2
+pydantic==2.14.4
 pydantic-settings==2.16.2
 SQLAlchemy==2.1.6
 alembic==1.20.1
