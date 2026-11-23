@@ -1,4 +1,4 @@
-# CipherForge - Ai Enabled Advanced SOC Enigma
+﻿# CipherForge - Ai Enabled Advanced SOC Enigma
 
 **Intelligence. Detection. Encryption.**
 
@@ -33,22 +33,22 @@ check. You use it in your web browser.
    [what happens when you delete an indicator](#what-happens-when-you-delete-an-indicator),
    [what is built and what is planned](#what-is-built-and-what-is-planned)
 4. [What you need before you start](#what-you-need-before-you-start)
-5. [Get it running](#get-it-running): [open a terminal](#open-a-terminal-in-the-project-folder),
-   [try it without API keys](#try-it-without-api-keys),
+5. [Get it running](#get-it-running): [try it without API keys](#try-it-without-api-keys),
    [run the real application](#run-the-real-application),
-   [run everything in Docker](#run-everything-in-docker),
-   [stop it and start it again](#stop-it-and-start-it-again)
-6. [Using the dashboard](#using-the-dashboard), including
-   [deleting indicators](#deleting-indicators)
+   [run everything in Docker](#run-everything-in-docker)
+6. [Using the dashboard](#using-the-dashboard)
 7. [Using the API directly](#using-the-api-directly)
 8. [Settings](#settings)
-9. [When something goes wrong](#when-something-goes-wrong)
-10. [Tests and quality checks](#tests-and-quality-checks)
-11. [Project layout](#project-layout)
-12. [Security in plain words](#security-in-plain-words)
-13. [Limitations](#limitations)
-14. [More documentation](#more-documentation)
-15. [Map data](#map-data), [Credits](#credits) and [Licence](#licence)
+9. [Tests and quality checks](#tests-and-quality-checks)
+10. [Project layout](#project-layout)
+11. [Security in plain words](#security-in-plain-words)
+12. [Limitations](#limitations)
+13. [More documentation](#more-documentation)
+14. [Map data](#map-data), [Credits](#credits) and [Licence](#licence)
+
+Full setup instructions, environment variables and troubleshooting live in
+**[docs/setup.md](docs/setup.md)**; the full dashboard walkthrough lives in
+**[docs/user-guide.md](docs/user-guide.md)**.
 
 ## What is CipherForge?
 
@@ -147,26 +147,6 @@ arrow is a question or an answer. The API is the only part that talks to outside
 | **5. The providers** | **AbuseIPDB** (IP addresses only) and **AlienVault OTX** (IP addresses, domains, URLs and SHA-256 hashes). | `backend/app/collectors/abuseipdb.py`, `otx.py` |
 | **6. Microsoft Entra ID** (optional) | Microsoft's sign-in service. Only when `AUTH_MODE=entra`, the API downloads Microsoft's public keys to check sign-in tokens. In the default local mode (`AUTH_MODE=dev`) there is no sign-in and you are a local developer. | `backend/app/security/auth.py` |
 
-**The same picture as text**
-
-```text
-   You, in a web browser
-           |
-           v
-   Web server              serves the pages, forwards data requests
-   (Vite or nginx)
-           |
-           v
-   CipherForge API         gatekeeper -> input checks -> intel engine -> audit trail
-   (Python, port 8000)
-           |
-           +------------------+--------------------+
-           |                  |                    |
-           v                  v                    v
-   Database              AbuseIPDB           AlienVault OTX
-   (saves everything)    (outside service)   (outside service)
-```
-
 ### What happens when you investigate something
 
 ![The steps of one investigation: the browser sends the indicator to the API; the API checks your sign-in, role and rate limit and cleans up the input; it asks the database for fresh saved answers; it asks the providers for what is missing; it saves the new answers; it scores the evidence; it saves the score and an audit record; and it sends the result back to the browser](docs/images/investigation-flow.svg)
@@ -234,24 +214,13 @@ traced to a line in the **How the score was built** panel (the method is called 
 older answer adds 15), two providers that back each other up add 20 more, and the most it can reach
 is 90. CipherForge is never 100% sure.
 
-**A worked example** (the invented address `2100:3946:b9d8::e0f4` in the demo):
-
-| Line in the panel | Points |
-| --- | --- |
-| AbuseIPDB evidence (strength 0.94, recent: 45 x 0.94 x 1.0) | +42 |
-| AlienVault OTX evidence (strength 1.00, recent: 45 x 1.00 x 1.0) | +45 |
-| Independent corroboration (two sources agree) | +8 |
-| Malware family association (three families named, capped at +10) | +10 |
-| Maximum score (the total, 105, is pulled back to 100) | -5 |
-| **Score** | **100, Critical** |
-
-Its confidence is 90: two fresh answers (70) plus 20 for the two sources agreeing. The method is
-written out in full in [docs/threat-intelligence.md](docs/threat-intelligence.md#scoring-intel-risk-v1).
+The method, with worked examples for every band, is written out in full in
+[docs/threat-intelligence.md](docs/threat-intelligence.md#scoring-intel-risk-v1).
 
 ### What happens when you delete an indicator
 
 Deleting is permanent, so it has a few safeguards. The step-by-step instructions are in
-[Deleting indicators](#deleting-indicators). Behind the scenes:
+[Deleting indicators](docs/user-guide.md#deleting-indicators). Behind the scenes:
 
 1. **You choose** one indicator or several, and press a delete button.
 2. **A box asks you to confirm.** It names what is about to go, and **Cancel** is already selected,
@@ -298,35 +267,21 @@ Optional:
 - **Docker Desktop**, only for [Path C](#run-everything-in-docker):
   <https://www.docker.com/products/docker-desktop/>
 - **Two free API keys** (AbuseIPDB and AlienVault OTX), only if you want real answers. See
-  [Add your API keys](#add-your-api-keys-optional).
+  [Add your API keys](docs/setup.md#add-your-api-keys-optional).
 - **Git**, only if you get the project through a Git repository.
 
 You also need **the project folder**: the folder that contains `backend`, `frontend` and `docs`. Put
 it somewhere you can find it, for example `C:\Users\you\cipherforge`. Every command in this guide
 starts from that folder.
 
-Check your tools. On Windows PowerShell:
-
-```powershell
-python --version
-node --version
-npm.cmd --version
-```
-
-On macOS or Linux:
-
-```bash
-python3 --version
-node --version
-npm --version
-```
-
-Each command should print a version number: Python 3.12 or higher and Node v22.22.0 or higher. If one
-says "not found", see [When something goes wrong](#when-something-goes-wrong).
+Full prerequisites, including how to check your installed versions, are in
+[docs/setup.md](docs/setup.md#prerequisites).
 
 ## Get it running
 
-There are three ways to run CipherForge. **Start with Path A.**
+There are three ways to run CipherForge. **Start with Path A.** Full step-by-step instructions for
+all three paths are in [docs/setup.md](docs/setup.md); this section gives the two-minute version of
+each.
 
 | | **Path A:** [try it without API keys](#try-it-without-api-keys) | **Path B:** [run the real application](#run-the-real-application) | **Path C:** [run everything in Docker](#run-everything-in-docker) |
 | --- | --- | --- | --- |
@@ -341,41 +296,13 @@ Paths A and B both use port 8000 for the API, so run only one of them at a time.
 banner at the top of every screen ("Simulated providers: this is demo data, not real threat
 intelligence"); the real application does not. That is how you can tell which one you are looking at.
 
-### Open a terminal in the project folder
-
-A **terminal** is a window where you type commands. For Paths A and B you will use **two**: Terminal 1
-runs the API and Terminal 2 runs the dashboard. Keep both open while you use CipherForge.
-
-- **Windows:** open the project folder in File Explorer, click the address bar, type `powershell` and
-  press Enter. (In Visual Studio Code: **Terminal, New Terminal**.)
-- **macOS or Linux:** open your terminal app and move to the folder, for example `cd ~/cipherforge`.
-
-To check you are in the right place, list the folder (`dir` on Windows, `ls` on macOS or Linux). You
-should see `backend`, `frontend` and `docs`.
-
-The commands differ slightly by system. This guide always shows both versions.
-
-| | Windows (PowerShell) | macOS or Linux |
-| --- | --- | --- |
-| Start Python | `python` | `python3` |
-| Python inside the project's private environment | `.\.venv\Scripts\python.exe` | `.venv/bin/python` |
-| Start npm | `npm.cmd` | `npm` |
-| Copy a file | `Copy-Item .env.example .env` | `cp .env.example .env` |
-| Set a variable for this terminal | `$env:NAME = "value"` | `export NAME=value` |
-
-The guide runs the environment's Python by its full path instead of "activating" the environment.
-PowerShell often blocks the activation script, and this way works the same everywhere.
-
 ### Try it without API keys
 
-**Path A.** This runs the real application in **demo mode**. Two things are different. The two
-providers are **simulated** (nothing is sent to AbuseIPDB or OTX), and the database is filled with
-about two weeks of invented lookups, so every screen has something to show. You need no `.env` file
-and no keys.
+**Path A** runs the real application in **demo mode**: the two providers are **simulated** (nothing
+is sent to AbuseIPDB or OTX) and the database starts pre-filled with about two weeks of invented
+lookups, so every screen has something to show. No `.env` file and no keys needed.
 
-**Step 1. In Terminal 1, install and start the demo API.**
-
-Windows (PowerShell):
+Terminal 1:
 
 ```powershell
 cd backend
@@ -384,47 +311,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn devtools.demo_server:create_demo_app --factory
 ```
 
-macOS or Linux:
-
-```bash
-cd backend
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python -m uvicorn devtools.demo_server:create_demo_app --factory
-```
-
-What these lines do:
-
-- `cd backend` moves into the backend folder. Stay in it for the rest of Terminal 1.
-- `python -m venv .venv` creates a **virtual environment**: a private folder (`backend/.venv`) that
-  holds this project's Python packages, so nothing else on your computer is touched. You do this
-  once.
-- `pip install -r requirements-dev.txt` downloads and installs the packages. It takes a few minutes
-  the first time.
-- `python -m uvicorn ... --factory` starts the API. **uvicorn** is the program that runs Python web
-  apps, and `--factory` tells it to build the app by calling `create_demo_app`.
-
-The first start prints about 500 lines while it creates the invented data. The API is ready when the
-last lines look like this (your times and the number in brackets will differ):
-
-```text
-00:58:25 INFO     cipherforge.demo: demo_seeded lookups=233 rejected=4 indicators=135
-00:58:25 INFO     uvicorn.error: Started server process [23976]
-00:58:25 INFO     uvicorn.error: Waiting for application startup.
-00:58:25 INFO     cipherforge.app: startup version=0.5.0 environment=development auth_mode=dev
-00:58:25 INFO     uvicorn.error: Application startup complete.
-00:58:25 INFO     uvicorn.error: Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-```
-
-Leave this terminal open. From now on it prints one line for every request the dashboard makes. That
-is normal.
-
-To check it, open <http://127.0.0.1:8000/health> in your browser. It should show
-`{"status":"ok","service":"cipherforge-api","version":"0.5.0"}`.
-
-**Step 2. In Terminal 2, start the dashboard.** Open a second terminal in the project folder, then:
-
-Windows (PowerShell):
+Terminal 2:
 
 ```powershell
 cd frontend
@@ -432,1030 +319,146 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-macOS or Linux:
+(macOS or Linux: `python3`/`.venv/bin/python` and `npm` instead of `npm.cmd`.) Open
+<http://127.0.0.1:5173>. You should see the Overview with a "simulated providers" banner, numbers on
+the tiles, and **API ONLINE** in the top bar — a labelled picture of this screen is in
+[docs/user-guide.md](docs/user-guide.md).
 
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-`npm ci` installs the exact package versions listed in `package-lock.json` (a few minutes the first
-time). `npm run dev` starts the dashboard's web server, which is called Vite. You should see something
-like:
-
-```text
-> cipherforge-frontend@0.5.0 dev
-> vite
-
-  VITE v8.3.5  ready in 1700 ms
-
-  ➜  Local:   http://127.0.0.1:5173/
-```
-
-**Step 3. Open <http://127.0.0.1:5173> in your browser.** You should see the Overview: a banner
-saying the providers are simulated, numbers on the tiles, charts, and **API ONLINE** in the top bar.
-A labelled picture of this screen is in [Using the dashboard](#using-the-dashboard), along with
-things to try.
-
-If the top bar says **API OFFLINE**, the API in Terminal 1 is not running. Check that terminal.
-
-**Good to know about the demo**
-
-- **Everything is invented.** The demo's own indicators use the names the internet reserves for
-  examples (`example.com`, `.org`, `.net`). Its "malicious" addresses are IPv6 addresses from space
-  nobody has been given, and its only IPv4 addresses are well-known public DNS servers, shown as
-  clean. A test checks that this list cannot accuse a real host. **If you type something of your own,
-  the simulated providers invent an answer for that too** (the same answer every time). It says
-  nothing about the real thing, so never use the demo to judge a real indicator.
-- **No sign-in is needed.** You are a local `SecurityAnalyst`. Set `CIPHERFORGE_DEMO_ROLES` to
-  change the roles.
-- **The invented data lives in `backend/.demo/demo.db`** (Git ignores it). The demo refuses to use
-  any other place, so it cannot be pointed at a real database. It is rebuilt at start-up when its
-  newest lookup is more than a day old, so the "last 14 days" charts always have data.
-- **It is for development and learning only.** The demo code is kept out of the Docker image and the
-  real application never imports it.
+Everything in the demo is invented, including answers for anything you type yourself, so never use it
+to judge a real indicator. The full explanation, exact terminal setup for both operating systems, what
+the startup log should look like, and what each demo setting does are in
+[docs/setup.md](docs/setup.md#path-a-try-it-without-api-keys).
 
 ### Run the real application
 
-**Path B.** This is CipherForge without the pretend parts. It starts empty and every lookup is real.
-It works with no API keys at all (every result will then say **Not assessed**), and you can
-[add free keys](#add-your-api-keys-optional) afterwards.
-
-**Step 1. Create your settings file.** In the project folder:
-
-Windows (PowerShell):
+**Path B** is CipherForge without the pretend parts: it starts empty and every lookup is real. It
+works with no API keys at all (every result then says **Not assessed**).
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-macOS or Linux:
-
-```bash
-cp .env.example .env
-```
-
-`.env` holds your settings. Git ignores it, so your keys cannot be committed by accident. (File
-Explorer may hide files that start with a dot. That is normal.)
-
-**Step 2. Choose a database.** Open `.env` in a text editor (on Windows, run `notepad .env`). Find the
-line that starts with `DATABASE_URL=` and replace it with this one:
-
-```text
-DATABASE_URL=sqlite+pysqlite:///./cipherforge.db
-```
-
-SQLite keeps everything in one file (`backend/cipherforge.db`), which is ideal for trying things out.
-Leave all the other lines alone, and save the file. For PostgreSQL, use
-[Docker](#run-everything-in-docker).
-
-**Step 3. In Terminal 1, set up and start the API.** Skip the first three commands if you already ran
-them for Path A.
-
-Windows (PowerShell):
+Open `.env`, set `DATABASE_URL=sqlite+pysqlite:///./cipherforge.db`, then in `backend`:
 
 ```powershell
-cd backend
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory
 ```
 
-macOS or Linux:
+Start the dashboard the same way as Path A, in `frontend`. Open <http://127.0.0.1:5173>: this is a
+brand-new installation, so the Overview is empty and every investigation says **Not assessed** until
+you add a provider key.
 
-```bash
-cd backend
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python -m alembic upgrade head
-.venv/bin/python -m uvicorn app.main:create_app --factory
-```
+To get real answers, create a free [AbuseIPDB](https://www.abuseipdb.com/register) and/or
+[AlienVault OTX](https://otx.alienvault.com) account, put the key(s) in `.env`
+(`ABUSEIPDB_API_KEY`/`OTX_API_KEY`) and restart the API. Keep keys private: never paste them into a
+chat, screenshot or commit; CipherForge keeps them server-side only and never sends them to the
+browser.
 
-`alembic upgrade head` creates the tables in the database. This is called a **migration**. Run it
-once now, and again after you update the project. On a new database it prints:
-
-```text
-INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
-INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
-INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline, Baseline: establishes Alembic version tracking. No application tables yet.
-INFO  [alembic.runtime.migration] Running upgrade 0001_baseline -> 0002_threat_intel, Threat intelligence: sources, indicators, provider observations and the audit log.
-```
-
-Run both `alembic` and `uvicorn` from the `backend` folder. The database path in `.env` is relative to
-the folder you run the command from, so running one of them from somewhere else would quietly create
-a second, empty database.
-
-The API is ready when you see this (your times and the number in brackets will differ):
-
-```text
-23:57:32 INFO     uvicorn.error: Started server process [19652]
-23:57:32 INFO     uvicorn.error: Waiting for application startup.
-23:57:32 INFO     cipherforge.app: startup version=0.5.0 environment=development auth_mode=dev
-23:57:32 INFO     uvicorn.error: Application startup complete.
-23:57:32 INFO     uvicorn.error: Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-```
-
-Check it in your browser. <http://127.0.0.1:8000/health> should show `{"status":"ok", ...}`, and
-<http://127.0.0.1:8000/ready> should show `{"status":"ready","checks":{"database":"ok"}}`. The second
-one proves the API can reach its database. <http://127.0.0.1:8000/docs> is an interactive page where
-you can try every endpoint.
-
-**Step 4. In Terminal 2, start the dashboard.** This is the same as Step 2 of Path A:
-
-```powershell
-cd frontend
-npm.cmd ci
-npm.cmd run dev
-```
-
-(On macOS or Linux, use `npm` instead of `npm.cmd`.)
-
-**Step 5. Open <http://127.0.0.1:5173>.** This is a brand-new installation, so the Overview is empty:
-
-![The Overview of a brand-new installation: every headline tile shows 0, a panel says Nothing here yet, the providers panel says none is configured, and the platform modules are listed](docs/screenshots/first-run-empty.png)
-
-1. **The headline tiles** all show 0, because nothing has been investigated.
-2. **"Nothing here yet"** is where the highest-risk and latest indicators will appear.
-3. **The providers panel** says that no provider is configured. Until you add a key, every
-   investigation comes back as **Not assessed**.
-4. **Platform modules** shows what the project is made of. Threat intelligence is **LIVE**. The
-   others are **PLANNED**.
-
-**Step 6. Make your first investigation.** Click **Investigate an indicator**, click the **IPv4**
-example (`8.8.8.8`) and press **Investigate**. With no keys you will see this:
-
-![A first investigation with no API keys: the gauge says Not assessed, and both provider cards say Not configured](docs/screenshots/first-run-no-keys.png)
-
-1. **The gauge** says **Not assessed** instead of showing a number.
-2. **The explanation** says that no provider answered, so this is not a clean result: nothing was
-   checked.
-3. **The first provider card** says **Not configured**: no AbuseIPDB key is set on the server.
-4. **The second provider card** says the same for AlienVault OTX.
-
-This is correct, not a bug. CipherForge cannot say anything about an indicator until at least one
-provider answers.
-
-### Add your API keys (optional)
-
-To get real answers, add the free keys. You can add one or both.
-
-| Provider | It handles | Get a key | Setting in `.env` |
-| --- | --- | --- | --- |
-| **AbuseIPDB** | IPv4 and IPv6 addresses | Create a free account at <https://www.abuseipdb.com/register> and sign in. Then open the **API** tab of your account, <https://www.abuseipdb.com/account/api> (this page shows an error until you are signed in), and create a key | `ABUSEIPDB_API_KEY` |
-| **AlienVault OTX** | IP addresses, domains, URLs and SHA-256 hashes | Create a free account at <https://otx.alienvault.com>. Your key (the "OTX Key") is shown on <https://otx.alienvault.com/settings> | `OTX_API_KEY` |
-
-1. Open `.env` and paste each key after the `=`, with no spaces and no quotes:
-
-   ```text
-   ABUSEIPDB_API_KEY=paste-your-key-here
-   OTX_API_KEY=paste-your-key-here
-   ```
-
-2. Save the file. In Terminal 1 press `Ctrl+C` to stop the API, then start it again with the last
-   command of Step 3 (the one with `uvicorn`). You do not need to run `alembic` again.
-3. Investigate `8.8.8.8` again. A provider that now answers shows **Answered** (or **No data**)
-   instead of **Not configured**.
-
-Keep your keys private. Never paste them into a chat, a screenshot or a commit. CipherForge keeps
-them on the server, never writes them to its logs and never sends them to the browser. Free accounts
-have daily limits, so use the "Ask the providers again" option sparingly.
-
-> **An honest note.** The provider code has been tested against recorded sample answers only, never
-> against the live services, because the author used no keys. If a card shows **Error**, see
-> [When something goes wrong](#when-something-goes-wrong).
+Full steps (the database migration, what a brand-new installation looks like, and getting each
+provider key) are in [docs/setup.md](docs/setup.md#path-b-run-the-real-application).
 
 ### Run everything in Docker
 
-**Path C.** Docker runs the database, the API and the dashboard in containers, so you do not need to
-install Python or Node. It uses PostgreSQL.
+**Path C** runs the database (PostgreSQL), the API and the dashboard in containers, so you need only
+Docker Desktop installed.
 
 > **Checked by the automatic tests, not by hand.** Docker was not available where this project was
-> written, so nobody has followed these steps on a personal computer. GitHub's automatic checks do
-> build both images and start the whole stack on a Linux machine, and confirm that the page and the
-> API answer, so it is expected to work. Docker Desktop on Windows or macOS was not tried. If
-> something fails, use Path A or B. Details:
-> [docs/deployment.md](docs/deployment.md#verification-status).
+> written, so these steps have never been followed on a personal computer. GitHub's automatic checks
+> do build both images and start the whole stack on Linux, and confirm the page and API answer. If
+> Path C fails for you, use Path A or B and please report it. See
+> [Limitations](#limitations).
 
-1. Install **Docker Desktop** and start it. Wait until it says it is running.
-2. In the project folder, create your settings file (Windows: `Copy-Item .env.example .env`;
-   macOS or Linux: `cp .env.example .env`).
-3. Open `.env` and replace the value of `POSTGRES_PASSWORD` with a random one made of **letters and
-   digits only**. The password is placed inside a web address, so symbols cause trouble. To make one:
+```bash
+docker compose up --build
+```
 
-   Windows (PowerShell):
+(After copying `.env.example` to `.env` and setting a letters-and-digits-only `POSTGRES_PASSWORD`
+first — PostgreSQL stores it on first start.) Open <http://localhost:3000>. Everything binds to
+`127.0.0.1` only. The full steps, the port table and adding API keys are in
+[docs/setup.md](docs/setup.md#path-c-run-everything-in-docker); the full service breakdown, backups
+and production hardening are in [docs/deployment.md](docs/deployment.md).
 
-   ```powershell
-   -join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
-   ```
-
-   macOS or Linux:
-
-   ```bash
-   openssl rand -hex 24
-   ```
-
-   Do this **before the first start**. PostgreSQL stores the password when it first creates its data,
-   so changing it later means deleting the data with `docker compose down --volumes`.
-4. Build and start everything:
-
-   ```bash
-   docker compose up --build
-   ```
-
-   The first run downloads images and builds the project, which takes a few minutes. Compose starts
-   four things in order: **postgres** (the database), **migrate** (creates the tables, then exits),
-   **backend** (the API) and **frontend** (nginx, which serves the dashboard and forwards `/api`,
-   `/health` and `/ready` to the API).
-5. Open <http://localhost:3000>.
-
-Everything is bound to `127.0.0.1`, so only your own computer can reach it. The template uses
-`AUTH_MODE=dev` (no sign-in), which is only safe for this kind of local use. To add API keys, put
-them in `.env` as described in [Add your API keys](#add-your-api-keys-optional), stop the stack with
-`Ctrl+C` and start it again with `docker compose up`.
-
-| Port on your computer | What is there | Setting in `.env` |
-| --- | --- | --- |
-| 3000 | The dashboard | `FRONTEND_PORT` |
-| 8000 | The API | `BACKEND_PORT` |
-| 5432 | PostgreSQL | `POSTGRES_PORT` |
-
-### Stop it and start it again
-
-- **Stop:** click in a terminal and press `Ctrl+C`. Do this in both terminals. For Docker, press
-  `Ctrl+C` in the terminal that runs `docker compose up`, or run `docker compose down`.
-- **Start again later:** you do not need to install anything again. Open two terminals in the project
-  folder and run only the start commands. For Path B, use `app.main:create_app` instead of
-  `devtools.demo_server:create_demo_app`.
-
-  Terminal 1 (Windows):
-
-  ```powershell
-  cd backend
-  .\.venv\Scripts\python.exe -m uvicorn devtools.demo_server:create_demo_app --factory
-  ```
-
-  Terminal 1 (macOS or Linux):
-
-  ```bash
-  cd backend
-  .venv/bin/python -m uvicorn devtools.demo_server:create_demo_app --factory
-  ```
-
-  Terminal 2 (Windows: `npm.cmd`; macOS or Linux: `npm`):
-
-  ```powershell
-  cd frontend
-  npm.cmd run dev
-  ```
-
-- **Your data stays.** Path B keeps everything in `backend/cipherforge.db`. Path A keeps its invented
-  data in `backend/.demo/demo.db`. Docker keeps the database in a Docker volume: `docker compose down`
-  keeps it and `docker compose down --volumes` deletes it.
-- **Start again from nothing.** Path B: stop the API and delete `backend/cipherforge.db`, then run
-  `alembic upgrade head` again. Path A: set `CIPHERFORGE_DEMO_RESET=1` for one start and the demo
-  rebuilds its data at once (Windows: `$env:CIPHERFORGE_DEMO_RESET = "1"`, then
-  `Remove-Item Env:CIPHERFORGE_DEMO_RESET` afterwards; macOS or Linux:
-  `CIPHERFORGE_DEMO_RESET=1 .venv/bin/python -m uvicorn devtools.demo_server:create_demo_app --factory`).
-  To remove only some indicators, delete them in the dashboard instead:
-  see [Deleting indicators](#deleting-indicators).
+**Stopping and restarting.** Press `Ctrl+C` in each terminal (or run `docker compose down`). To start
+again later you only need the start commands above, not the install steps. Full detail, including how
+to reset the demo or start from an empty database, is in
+[docs/setup.md](docs/setup.md#stop-it-and-start-it-again).
 
 ## Using the dashboard
 
-Open <http://127.0.0.1:5173> for Paths A and B, or <http://localhost:3000> for Path C.
+Open <http://127.0.0.1:5173> for Paths A and B, or <http://localhost:3000> for Path C. The complete
+screen-by-screen walkthrough, with a labelled picture for every screen and result type, is in
+**[docs/user-guide.md](docs/user-guide.md)**.
 
-The pictures in this section come from the demo (Path A), so the indicators and numbers in them are
-**invented**. Yours will look different. The numbered markers were added to the pictures to match the
-numbered lists under them. They are not on the real screen.
-
-### The screens
-
-Use the menu on the left to move around. On a phone it becomes a bar along the bottom.
-
-| Menu item | Address | What it is for |
-| --- | --- | --- |
-| **Overview** | `/` | Figures, charts and a map for everything you have checked. |
-| **Investigate** | `/investigate` | Type in an indicator and read the result. |
-| **Indicators** | `/indicators` | A searchable list of everything you have checked. You can also delete indicators here. |
-| *(click any indicator)* | `/indicators/…` | The saved record of one indicator. You can re-check it or delete it there. |
-| **System status** | `/status` | Is the API running, and can it reach its database? |
-
-Every screen has its own address, so you can bookmark it. The Indicators list keeps your search and
-filters in the address too.
-
-### A five-minute walk
-
-Try this on Path A. It touches every screen.
-
-1. On the **Overview**, read the five tiles at the top, then scroll down through the charts.
-2. Click **Investigate an indicator**.
-3. Under "Fill with an example", click **IPv4**, then press **Investigate**. The result is calm: a
-   score of 0 and **Informational**.
-4. Investigate `2100:3946:b9d8::e0f4`. This invented address comes back **Critical**, with a score of
-   100. Scroll down to read each provider's card and "How the score was built".
-5. Open **Indicators** in the menu. Try the search box and the filters, then click an indicator to
-   open its saved record.
-6. On the record, press **Re-check with providers**. It asks the providers again and updates the
-   record.
-7. Open **System status** and press **Refresh**.
-8. Press `Ctrl K` (`Cmd K` on a Mac), type `8.8.8.8` and look at the options.
-9. Last, try deleting. Go back to **Indicators**, search for `8.8.8.8` (the one you checked in step
-   3), tick its box and press **Delete selected (1)**. Read the box, which says what will go, then
-   press **Delete indicator**. The indicator disappears from the list. The demo's data are invented,
-   so nothing real is lost, and you can rebuild it
-   ([Stop it and start it again](#stop-it-and-start-it-again)). To leave everything as it was,
-   press **Cancel** instead.
-
-On Path B with no keys, every result comes back **Not assessed**. That is correct.
-
-### The Overview screen
-
-![The Overview in demo mode, with seven numbered markers](docs/screenshots/tour-overview.png)
-
-1. **The menu.** One item for each screen.
-2. **The command palette button.** Opens a quick-jump box. See
-   [Shortcuts and the command palette](#shortcuts-and-the-command-palette).
-3. **The Effects switch.** Turns the animated visuals on or off. See
-   [Visual effects and small screens](#visual-effects-and-small-screens).
-4. **API ONLINE.** The dashboard can reach the API. It changes to **API DEGRADED** (the API is up, but
-   something it needs is not healthy) or **API OFFLINE** (the API cannot be reached). Click it to
-   open System status.
-5. **The five tiles.** *Indicators tracked*, *Lookups, last 24 hours*, *High-risk indicators* (High
-   and Critical together), *Critical indicators* (score above 80) and *Not assessed* (no provider
-   answered, which "is not the same as clean"). The first two also show the change since the 24 hours
-   before. **Click a tile** to open the list of indicators behind it.
-6. **Investigate an indicator.** The quickest way to start a lookup. Next to it, "Live · refreshed
-   14:32:05" shows when the figures were last updated, and **Refresh** updates them now. They also
-   update by themselves every minute.
-7. **Threat pulse and Risk posture.** Threat pulse shows the lookups per day and how many of them
-   ended High or Critical. Risk posture is a ring that shows how your indicators are spread across
-   the risk bands.
-
-On wide screens the top bar also shows who you are: your role and the sign-in mode ("Dev auth").
-
-Scroll down for more panels:
-
-| Panel | What it shows |
+| Screen | What it is for |
 | --- | --- |
-| **Provider-reported countries**, **Top countries** | A dot map and a ranked list of the countries that providers report for IP addresses. This is *not* where an attacker is, and domains, URLs and hashes have no country. |
-| **Malware families** | Families of malware that providers link to your indicators. |
-| **ATT&CK techniques** | MITRE ATT&CK codes (such as `T1059`) that providers mention. |
-| **Provider tags** | Labels that providers attached, such as `botnet`. |
-| **Indicator types by risk** | A grid of how many indicators of each type sit in each risk band. |
-| **Indicator mix** | A radar shape showing how your indicators are split by type. |
-| **Lookup activity** | A grid of lookups per hour of the day (UTC) over the last days. |
-| **Intelligence providers** | Which providers are set up, what each one handles, and whether it is **Configured**, **Not configured** or **Simulated**. |
-| **Highest risk**, **Latest investigations** | The top-scoring and the newest indicators. Click one to open its record. |
-| **Platform modules** | The parts of the full platform. Only Threat intelligence is **LIVE**. The rest are **PLANNED**. |
+| **Overview** (`/`) | Figures, charts and a map for everything you have checked. |
+| **Investigate** (`/investigate`) | Type in an indicator and read the result: a score, a risk band, and each provider's answer. |
+| **Indicators** (`/indicators`) | A searchable list of everything you have checked. Delete one, a ticked range, or a whole page. |
+| *(click any indicator)* | The saved record of one indicator. Re-check it or delete it there. |
+| **System status** (`/status`) | Is the API running, and can it reach its database? |
 
-**Click a country, a malware family, an ATT&CK technique or a tag** and a drawer slides in from the
-right. It shows how many indicators match, the highest risk among them and the highest-risk ones,
-each with a link to its record. For a technique it also links to the MITRE ATT&CK page. Press `Esc`
-to close it.
-
-Every chart also has a text version of its numbers, for people who use screen readers. If you ever
-have a very large number of lookups, the Overview uses only the most recent ones and prints a note
-saying so.
-
-### The Investigate screen
-
-![The Investigate form, with five numbered markers](docs/screenshots/tour-investigate-form.png)
-
-1. **The input box.** Type or paste one indicator. A chip underneath (here "Looks like IPv4") shows
-   what CipherForge thinks you typed.
-2. **Fill with an example.** One click puts a sample of each type in the box.
-3. **Ask the providers again, even if a stored answer is recent.** Normally CipherForge reuses an
-   answer it saved a few hours ago, which protects your daily allowance with the providers. Tick the
-   box to ask again anyway. This uses allowance. (An answer less than a minute old is reused
-   regardless.)
-4. **Before you send.** A reminder that the indicator is sent to each configured provider, which is
-   outside your organisation. Do not enter internal host names or links that contain secret tokens.
-5. **Investigate.** Starts the lookup.
-
-#### What you can type
-
-| Type | Example | Who is asked |
-| --- | --- | --- |
-| IPv4 address | `8.8.8.8` | AbuseIPDB and AlienVault OTX |
-| IPv6 address | `2001:4860:4860::8888` | AbuseIPDB and AlienVault OTX |
-| Domain | `example.com` | AlienVault OTX only |
-| URL | `https://example.com/path` | AlienVault OTX only |
-| SHA-256 hash | 64 characters made of `0-9` and `a-f` | AlienVault OTX only |
-
-Only one provider can answer about a domain, a URL or a hash. The rules need two providers to back
-each other up before a score can pass 60, so for these types **the score never goes above 60
-(Medium)**.
-
-CipherForge cleans up what you type. It accepts "defanged" text such as `hxxp://example[.]com` and
-`1.2.3[.]4`, and it writes names in a standard form, so different spellings of the same thing end up
-on one record.
-
-It **refuses**, with a message that explains why: private or internal addresses (such as
-`192.168.1.10`), made-up endings such as `.local`, `.internal` and `.lan`, single words, email
-addresses, web links that contain a user name and password, MD5, SHA-1 and SHA-512 hashes, and
-anything longer than 2,048 characters.
-
-#### A low-risk result
-
-![A result for 8.8.8.8: a score of 0, Informational](docs/screenshots/tour-result-fine.png)
-
-1. **The gauge.** A ring that fills up to the score and changes colour with the risk band.
-2. **The score**, from 0 to 100, with its band name.
-3. **The confidence bar.** How much fresh evidence stands behind the score. It is *not* the chance
-   that the indicator is bad.
-4. **The facts.** The status (**Active** means at least one provider answer is still fresh,
-   **Stale** means none is), when it was last checked, the activity window (when the providers saw
-   it active) and how many sources had evidence.
-5. **Open the saved record.** Every result is saved. The strip above the picture says, "This result
-   is saved. You can return to it from the Indicators page."
-
-#### A high-risk result
-
-![A result for an invented risky address: a score of 100, Critical, with provider tags](docs/screenshots/tour-result-risky.png)
-
-Markers 1 to 4 are the same as above. The new ones are:
-
-5. **Provider tags.** Labels that the providers attached, here `botnet`, `loader` and `c2`. ("C2"
-   means command and control: the servers that attackers use to give orders to infected machines.)
-6. **The saved-record link**, as before.
-
-#### Each provider's answer
-
-![The Provider answers section: one card for each provider](docs/screenshots/tour-result-providers.png)
-
-Scroll down to **Provider answers**. There is one card for each provider, so if the providers
-disagree you see it here.
-
-1. **The card header.** The provider's name and a status label such as **Answered**. The labels are
-   explained in [What the provider labels mean](#what-the-provider-labels-mean).
-2. **Evidence strength.** How strong this provider's evidence is, from 0 to 1. It is not a
-   probability.
-3. **Source.** "Queried live for this lookup" or "Stored answer from an earlier lookup".
-4. **The other provider's card.**
-
-A card also lists how fresh the answer is, the first and latest activity, when it was checked and
-how long the answer stays valid, followed by the provider's own facts. AbuseIPDB gives an abuse
-confidence (out of 100), the number of reports and of different reporters, the type of use, the
-internet provider and an approximate location. OTX gives the number of *pulses* (reports written by
-its community) that mention the indicator, and lists the top ones.
-
-#### How the score was built
-
-![The "How the score was built" panel](docs/screenshots/tour-result-score.png)
-
-This panel comes right after the provider cards. It starts with a one-line summary, such as "2
-providers answered; 2 reported malicious activity; 2 had evidence strong and recent enough to count
-as independent support."
-
-1. **The points table.** Each line is one reason with its points. A minus number takes points away
-   (for example the cap at 100).
-2. **The total**, "Score (out of 100)".
-3. **What is not known.** The gaps in the evidence, stated plainly (for example "No internal
-   telemetry was available").
-4. **Recommended next steps.** Advice that depends on the risk band. CipherForge only recommends.
-   It never blocks, isolates or changes anything on its own.
-5. **How scores are calculated (intel-risk-v1).** A folded section; click it to open it. It explains
-   the rules in the same terms as [How the score is made](#how-the-score-is-made).
-
-#### When nothing can be said
-
-![A Not assessed result: no number on the gauge, and neither provider could answer](docs/screenshots/tour-not-assessed.png)
-
-1. **The gauge** says **Not assessed** and shows no number.
-2. **The explanation**: "No provider answered, so CipherForge has no evidence about this indicator.
-   This is not a clean result: it only means nothing was checked."
-3. **The first card.** Here AbuseIPDB says **Not supported**, because it only handles IP addresses
-   and this indicator is a domain.
-4. **The second card.** Here OTX says **Rate limited**: it refused the request because its allowance
-   was used up.
-
-The demo does this on purpose for any value that contains `rate-limit`. On Path B with no keys you
-see the same screen, with **Not configured** on both cards.
-
-#### When an indicator is refused
-
-![A refused lookup: a private address is not accepted, and a red alert explains why](docs/screenshots/tour-refused.png)
-
-1. **The input** holds `192.168.1.10`, a private address that only exists inside a home or office
-   network.
-2. **Investigate**, as usual.
-3. **The red alert**: "That request was not accepted", followed by the reason: private, loopback,
-   link-local, multicast, reserved and other non-public addresses are not looked up.
-
-There are two reasons. Your internal addressing is not leaked to a third party, and nobody can use
-CipherForge to make the server probe machines inside your network. A refused lookup is still
-recorded in the audit log, without the text you typed.
-
-### The Indicators screen
+Use the menu on the left to move around (it becomes a bar along the bottom on a phone), or press
+`Ctrl K` (`Cmd K` on a Mac) to open a command palette from any screen. Every screen has its own
+address, so you can bookmark it.
 
 ![The Indicators list, filtered to High or critical and sorted by highest risk, with eight numbered markers](docs/screenshots/tour-indicators.png)
 
-This is the list you get when you click the **High-risk indicators** tile on the Overview.
-
-1. **The search box.** Type part of an address, domain, URL or hash, then press **Search**.
-2. **The filters.** **Type** (IPv4, IPv6, Domain, URL or SHA-256), **Classification** (High or
-   critical, Critical, High, Medium, Low, Informational or Not assessed) and **Sort by** (Most
-   recently checked, or Highest risk first). **Reset filters** appears when a filter is on.
-3. **The count**, such as "17 indicators found."
-4. **An indicator.** Click it to open its saved record.
-5. **Score and Confidence.** The two numbers for each indicator. The other columns are Type,
-   Classification, Sources (how many had evidence), Status and Last checked.
-6. **The tick boxes.** Tick the rows you want to delete. The box in the header ticks every row on the
-   page.
-7. **The bin button.** Deletes that one indicator, after asking you to confirm.
-8. **The hint.** "Tick rows to delete them. Hold Shift to tick a range." Once you tick something, it
-   is replaced by **Clear selection** and **Delete selected (N)**.
-
-Deleting is explained step by step in [Deleting indicators](#deleting-indicators).
-
-The list shows 25 indicators at a time. Use **Previous** and **Next** under the table.
-
-### A saved record
-
-![An indicator's saved record, with four numbered markers](docs/screenshots/tour-indicator-details.png)
-
-1. **← All indicators.** Goes back to the list.
-2. **Re-check with providers.** Asks the providers again and updates the record. This uses some of
-   the providers' daily allowance, so use it when you need fresh evidence.
-3. **The result.** The same gauge, provider cards and score breakdown that you saw on the Investigate
-   screen. The page says, "This is the stored record. Re-checking asks the configured providers again
-   and updates it."
-4. **Delete indicator.** Deletes this indicator and its stored provider answers, after asking you to
-   confirm. The page then says **Indicator deleted** and offers **Back to the list** and
-   **Investigate another indicator**.
-
 ### Deleting indicators
 
-Use this to get rid of indicators you no longer want, such as a test lookup, a typo or an old entry.
-You can delete one indicator or many at once. **Deleting is permanent.** The indicator and every
-provider answer stored for it are removed from the database, and it disappears from every screen. What
-happens behind the scenes is in
-[What happens when you delete an indicator](#what-happens-when-you-delete-an-indicator).
+Delete one indicator at a time (the bin button on its row, or **Delete indicator** on its saved
+record), a ticked range (hold `Shift` to select several rows), or every row on the page at once.
+Deleting is permanent: a confirmation box names what will go before anything is removed, and the
+audit log keeps a record of the deletion rather than losing it — CipherForge has no feature for
+deleting audit entries. The full walkthrough, with every screen pictured, is in
+[docs/user-guide.md](docs/user-guide.md#deleting-indicators).
 
-| You want to delete… | Do this |
-| --- | --- |
-| **One indicator from the list** | Press the bin button at the end of its row. |
-| **The indicator you are reading** | Open its saved record and press **Delete indicator**. |
-| **Several indicators** | Tick their boxes, then press **Delete selected (N)**, where N is how many you ticked. |
-| **A run of rows next to each other** | Tick the first box, then hold `Shift` and click the last box. Every row between them is ticked as well. |
-| **Every row on the page** | Tick the box in the table header, then press **Delete selected (N)**. |
-
-![The Indicators list with three rows ticked, with four numbered markers](docs/screenshots/tour-delete-select.png)
-
-1. **The header box.** Ticks or unticks every row on the page. It shows a dash when only some rows are
-   ticked.
-2. **The ticked rows.** Click one box, then `Shift`-click another to tick every row between them.
-3. **Clear selection** and **Delete selected (3)**. They appear as soon as one row is ticked. **Clear
-   selection** unticks everything.
-4. **The bin button.** It stays on every row, for deleting just that one.
-
-Whichever way you choose, a box opens and asks you to confirm. Nothing is deleted until you press the
-red button in it.
-
-![The confirmation box, with five numbered markers](docs/screenshots/tour-delete-confirm.png)
-
-1. **The title.** How many indicators are about to go: "Delete this indicator?" for one, or "Delete 3
-   indicators?" for three.
-2. **The list.** The indicators you chose. It names up to five, then says "and N more".
-3. **The warning.** "This permanently removes them, and every provider answer stored for them, from
-   the database. It cannot be undone."
-4. **The audit note.** "The audit log is kept as it is: it still records the past lookups and gains a
-   record of this deletion."
-5. **The buttons.** **Cancel** closes the box and changes nothing. It is the button that is selected
-   when the box opens, so pressing Enter by mistake cannot delete anything. The red button does the
-   deleting. If something goes wrong, such as the API being unreachable, the box stays open and says
-   why, and nothing is deleted.
-
-![The Indicators list after the deletion, with three numbered markers](docs/screenshots/tour-delete-done.png)
-
-1. **The notice.** "Deleted 3 indicators and 15 stored provider answers." If an indicator had
-   already been deleted by someone else, the notice also says how many were "already gone".
-2. **The count.** It goes down by the number you deleted, here from 17 to 14.
-3. **Dismiss.** Closes the notice.
-
-Things to know:
-
-- **There is no undo.** Be sure before you press the red button. Only a database backup can bring an
-  indicator back.
-- **Ticks belong to the page you are on.** When you change page, search or filter, the ticks are
-  cleared, so you can never delete rows you cannot see.
-- **There is no "delete everything" button.** The list shows 25 rows at a time. To empty a long list,
-  tick the header box, delete, and repeat. (To start again with an empty database, see
-  [Stop it and start it again](#stop-it-and-start-it-again).)
-- **The audit log is not touched.** Its old entries stay as they are, and each deletion adds one new
-  entry (`IOC_DELETE`) saying who deleted what and when. It still holds the text of a deleted
-  indicator, such as `8.8.8.8`. That is on purpose: it is the permanent record of what was done.
-  CipherForge has no feature for deleting audit entries.
-- **A deleted indicator can come back as a new one.** If you investigate the same text again, the
-  providers are asked afresh and a new record is saved.
-- **Who may delete.** Anyone who may investigate: a `SecurityAnalyst` or an `Admin`.
-
-### The System status screen
-
-![The System status screen, with four numbered markers](docs/screenshots/tour-status.png)
-
-1. **Overall status.** One word and one sentence. **Operational**: the API is up and its database is
-   reachable. **Degraded**: the API is up, but something it needs is not healthy. **Down**: the API
-   cannot be reached. **Checking**: it is still finding out.
-2. **Refresh**, and the time of the last check. The page also refreshes itself every 30 seconds.
-3. **The API card.** **Up** with the service name and version, or **Unreachable**.
-4. **The Database card.** **Reachable** when the API can run queries, or **Unavailable** when it
-   cannot reach its database.
-
-If something looks wrong anywhere else, look here first.
-
-### Shortcuts and the command palette
-
-![The command palette after typing 8.8.8.8, with three numbered markers](docs/screenshots/tour-palette.png)
-
-Press `Ctrl K` (`Cmd K` on a Mac) or `/` to open the palette from any screen.
-
-1. **The input row.** Type what you want.
-2. **The options.** Anything you type can be investigated or searched for, so the first two options
-   are always "Investigate “8.8.8.8”" and "Search indicators for “8.8.8.8”". Typing a screen name
-   offers to go there. You can also turn the visual effects on or off.
-3. **The hint line.** "↑ ↓ move · Enter run · Esc close".
-
-Choosing **Investigate** starts the lookup at once, so the indicator is sent to the providers
-straight away. Following a link never does that.
-
-| Keys | What happens |
-| --- | --- |
-| `Ctrl K` or `Cmd K` | Open or close the palette |
-| `/` | Open the palette |
-| `G`, then `O` | Go to Overview |
-| `G`, then `I` | Go to Investigate |
-| `G`, then `L` | Go to Indicators (**L** for list) |
-| `G`, then `S` | Go to System status |
-| `Esc` | Close the palette or a drawer |
-
-For the two-key shortcuts, press the second key within one second. Plain keys do nothing while you
-are typing in a box or while the palette or a drawer is open, so they cannot get in your way.
-
-### What the provider labels mean
-
-Each provider card has one of these labels.
-
-| Label | What it means | What to do |
-| --- | --- | --- |
-| **Answered** | The provider returned evidence about this indicator. | Read its card. |
-| **No data** | The provider answered but holds no reports about this indicator. **That is not proof it is safe.** | Treat it as "no information from this source". |
-| **Not configured** | No API key is set on the server for this provider, so it was not asked. | Add the key: [Add your API keys](#add-your-api-keys-optional). |
-| **Not supported** | This provider does not handle this type of indicator. | Nothing. AbuseIPDB, for example, only handles IP addresses. |
-| **Rate limited** | The provider refused the request because its allowance was used up. | Try again later. |
-| **Error** | The provider could not be asked, or returned something unusable. | Try again. See [When something goes wrong](#when-something-goes-wrong). |
-| **Not queried** | No stored answer exists for this provider. | Investigate or re-check the indicator to ask it. |
-
-An indicator's **Status** is **Active** when at least one provider answer is still fresh and
-**Stale** when none is. A stale indicator is not wrong. It just has not been checked for a while.
-
-### Things to try in the demo
-
-| Type this | What happens |
-| --- | --- |
-| `8.8.8.8` | Score 0, **Informational**, confidence 70. The providers were asked and nothing bad was reported. |
-| `2100:3946:b9d8::e0f4` | **Critical**, score 100, confidence 90. Both providers report it. |
-| `rate-limit-sample.example.net` | **Not assessed**. AbuseIPDB cannot handle domains, and OTX says **Rate limited**. |
-| `provider-error.example.com` | **Not assessed**. AbuseIPDB cannot handle domains, and OTX shows **Error**. Any value containing `provider-error` fails on purpose. |
-| `hxxp://example[.]com` | Accepted and tidied into the URL `http://example.com/`. |
-| `192.168.1.10` | Refused: a private address. |
-| `d41d8cd98f00b204e9800998ecf8427e` | Refused: this is an MD5 hash, and only SHA-256 is accepted. |
-
-**Anything else you type also gets an answer, but the answer is invented.** The simulated providers
-make up a profile from the text you typed, so the same value always gets the same answer. It says
-nothing about the real indicator, so never use the demo to judge one.
-
-### Visual effects and small screens
-
-The dashboard has a futuristic look: an animated background (aurora glows, a grid floor, drifting
-dots and a light that follows your pointer), numbers that count up, charts that draw themselves and
-headings that "decode". The motion is built with [anime.js](https://animejs.com/).
-
-- **The Effects switch** in the top bar turns all of it off. Your choice is remembered in this
-  browser only.
-- **Reduced motion.** If your computer is set to reduce motion, the effects stay off and the switch is
-  disabled, with a tooltip that says why.
-- **Nothing depends on an effect.** Every screen works the same with them off.
-- **Touch screens** skip the light that follows the pointer.
-- **Slow computers.** The effects were not tuned for slow hardware. If a page feels sluggish, switch
-  them off.
-- **Phones.** The layout adapts and the menu moves to the bottom:
-
-<img src="docs/screenshots/phone.png" alt="The Overview on a phone-sized screen, with the menu as a bar along the bottom" width="320">
+Everything else — reading a result and its score breakdown, what the provider labels mean,
+shortcuts, the demo's sample values, and the visual effects — is covered screen by screen in
+**[docs/user-guide.md](docs/user-guide.md)**.
 
 ## Using the API directly
 
-The dashboard is only one way in. Everything it shows comes from the **API**, and you can call the API
-yourself from PowerShell, `curl` or your own scripts. That is handy for automation, and for seeing
-exactly what the dashboard sees. (In demo mode the answers are invented, as everywhere else.)
+The dashboard is only one way in. Everything it shows comes from the **API**, and you can call it
+yourself from PowerShell, `curl` or your own scripts — handy for automation, and for seeing exactly
+what the dashboard sees. (In demo mode the answers are invented, as everywhere else.)
 
-The API has ten endpoints today:
-
-| Endpoint | What it does |
-| --- | --- |
-| `GET /health` | Is the API alive? Public. |
-| `GET /ready` | Can the API reach its database? Public. It answers `503` when it cannot. |
-| `GET /api/v1/me` | Who the API thinks you are, and which roles you have. |
-| `POST /api/v1/intel/investigate` | Investigates one indicator, like the **Investigate** screen. The body is `{"indicator": "8.8.8.8"}`. Add `"refresh": true` to ask the providers again instead of reusing a saved answer. |
-| `GET /api/v1/intel/indicators` | Searches what you have investigated. Optional filters: `q` (part of the value), `type`, `classification`, `assessed`, `sort`, `limit` and `offset`. |
-| `GET /api/v1/intel/indicators/{id}` | One saved indicator, by its id. |
-| `DELETE /api/v1/intel/indicators/{id}` | Deletes one saved indicator and its stored provider answers for good, like the **Delete indicator** button. |
-| `POST /api/v1/intel/indicators/bulk-delete` | Deletes several at once, like **Delete selected**. The body is `{"indicator_ids": ["…", "…"]}`, with 1 to 100 ids. |
-| `GET /api/v1/intel/stats` | Counts of indicators and lookups. |
-| `GET /api/v1/intel/overview` | The figures behind the Overview screen. |
-
-**Who may call them.** Everything under `/api/v1/intel` needs the `SecurityAnalyst` or `Admin` role.
-With the default `AUTH_MODE=dev` you are a local developer who has the `SecurityAnalyst` role, so you
-send no token. With `AUTH_MODE=entra` you send an `Authorization: Bearer <token>` header.
-
-**Try it.** With the API running, open <http://127.0.0.1:8000/docs>. This interactive page lists every
-endpoint and lets you try each one from the browser. It is switched off when
-`ENVIRONMENT=production`. Or type commands in a terminal.
-
-Windows (PowerShell):
+The API has ten endpoints today, covering health and readiness, who you are, and investigating,
+searching, reading, deleting and summarising indicators. `GET /api/v1/me` and everything under
+`/api/v1/intel` need the `SecurityAnalyst` or `Admin` role; with the default `AUTH_MODE=dev` you
+already have it and send no token.
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/me
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/investigate -ContentType 'application/json' -Body '{"indicator": "8.8.8.8"}' | ConvertTo-Json -Depth 8
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/intel/indicators?sort=risk&limit=5" | ConvertTo-Json -Depth 5
 ```
 
-macOS or Linux:
+> **Always read `score.answered_sources`.** With no provider keys, the API answers `risk_score: 0`
+> and `classification: "informational"` because it has no evidence at all — that is **not** "clean".
+> `answered_sources: 0` means no provider answered. The dashboard makes this check for you and shows
+> **Not assessed**; a script of your own must do the same.
 
-```bash
-curl -s http://127.0.0.1:8000/health
-curl -s http://127.0.0.1:8000/api/v1/me
-curl -s -X POST -H "Content-Type: application/json" -d '{"indicator": "8.8.8.8"}' http://127.0.0.1:8000/api/v1/intel/investigate
-curl -s "http://127.0.0.1:8000/api/v1/intel/indicators?sort=risk&limit=5"
-```
-
-`/health` answers `{"status":"ok","service":"cipherforge-api","version":"0.5.0"}` (PowerShell draws it
-as a small table). `/api/v1/me` answers
-`{"subject":"dev-user","name":"Local Developer","roles":["SecurityAnalyst"],"auth_mode":"dev"}`. (On
-Windows, `curl.exe` also works, but its quoting rules differ between PowerShell versions, so this
-guide uses `Invoke-RestMethod`.)
-
-**Deleting through the API.** Both delete routes remove the rows for good, as the dashboard does, and
-add one `IOC_DELETE` entry per indicator to the audit log. Every saved indicator has an
-`indicator_id`. These commands investigate `8.8.8.8` and then delete exactly that indicator.
-
-Windows (PowerShell):
-
-```powershell
-$result = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/investigate -ContentType 'application/json' -Body '{"indicator": "8.8.8.8"}'
-Invoke-RestMethod -Method Delete -Uri "http://127.0.0.1:8000/api/v1/intel/indicators/$($result.indicator.indicator_id)"
-```
-
-macOS or Linux (copy the `indicator_id` from the first answer into the second command):
-
-```bash
-curl -s -X POST -H "Content-Type: application/json" -d '{"indicator": "8.8.8.8"}' http://127.0.0.1:8000/api/v1/intel/investigate
-curl -s -X DELETE http://127.0.0.1:8000/api/v1/intel/indicators/PASTE-THE-ID-HERE
-```
-
-The answer lists what was removed, for example
-`{"deleted":["<the id>"],"not_found":[],"observations_removed":2}` (2 stored provider answers; `0` when
-no provider had answered). To delete several at once, send their ids to `bulk-delete` (up to 100). An
-id that no longer exists comes back in `not_found`, which is not an error:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/indicators/bulk-delete -ContentType 'application/json' -Body '{"indicator_ids": ["PASTE-ID-1", "PASTE-ID-2"]}'
-```
-
-There is no API call that deletes audit entries.
-
-**What an investigation answer looks like.** This is the real answer of a new installation with no API
-keys, shortened (the full one has more fields, listed in [docs/api.md](docs/api.md)):
-
-```json
-{
-  "indicator": {
-    "indicator_type": "ipv4",
-    "indicator_value": "8.8.8.8",
-    "risk_score": 0,
-    "classification": "informational",
-    "confidence": 0,
-    "source_count": 0,
-    "status": "stale"
-  },
-  "providers": [
-    {
-      "provider": "abuseipdb",
-      "status": "not_configured",
-      "message": "AbuseIPDB is not configured (no API key set)."
-    },
-    {
-      "provider": "otx",
-      "status": "not_configured",
-      "message": "AlienVault OTX is not configured (no API key set)."
-    }
-  ],
-  "score": {
-    "methodology": "intel-risk-v1",
-    "answered_sources": 0,
-    "uncertainty": ["No provider returned evidence for this indicator.", "..."],
-    "recommended_actions": [
-      "No provider answered, so CipherForge has no evidence about this indicator and cannot say whether it is safe.",
-      "..."
-    ]
-  }
-}
-```
-
-| Part of the answer | What it holds |
-| --- | --- |
-| `indicator` | The saved record: type, value, `risk_score`, `classification` (always lower case), `confidence`, `status` and dates. |
-| `providers` | One entry per provider, with a `status` (`ok`, `no_data`, `not_configured`, `unsupported`, `rate_limited`, `error` or `not_queried`), its evidence and a `message`. These are the [labels on the provider cards](#what-the-provider-labels-mean). |
-| `score` | How the score was built: the lines (`factors`), `answered_sources`, what is not known (`uncertainty`) and the suggested next steps (`recommended_actions`). |
-| `internal_evidence` | Always "not available" today, because no internal telemetry is connected. |
-
-> **Always read `answered_sources`.** With no keys the API answers `risk_score: 0` and
-> `classification: "informational"`, because it has no evidence at all. That is **not** "clean". Look at
-> `score.answered_sources`: **0 means no provider answered, so the result is unknown.** The dashboard
-> makes this check for you and shows **Not assessed**. A script of your own must do the same.
-
-**Errors** all have the same shape, whatever went wrong. This is what you get for
-`{"indicator": "192.168.1.10"}`, a private address, with HTTP status `422`:
-
-```json
-{
-  "error": {
-    "code": "validation_error",
-    "message": "Private, loopback, link-local, multicast, reserved and other non-public addresses are not looked up.",
-    "correlation_id": "21a543a94ddc4365bee4366d0b7dc83f"
-  }
-}
-```
-
-The statuses you will meet are `401` (no valid sign-in), `403` (the wrong role), `404` (no indicator
-has that id, so deleting the same one twice gives `404`), `409` (an indicator was deleted while it was
-being investigated; investigate it again), `422` (input not accepted), `429` (too many lookups; the
-`Retry-After` header says how many seconds to wait) and `503` (something the API needs, such as the
-database, is down). Every answer carries an `X-Correlation-ID`
-header. Quote it when you report a problem, because the same ID appears in the API's log for that
-request. The full contract is in [docs/api.md](docs/api.md).
+The full endpoint list, every field, error codes, and terminal examples for deleting indicators
+through the API are in **[docs/api.md](docs/api.md)**. With the API running, you can also browse it
+interactively at <http://127.0.0.1:8000/docs> (disabled when `ENVIRONMENT=production`).
 
 ## Settings
 
 CipherForge reads its settings from the `.env` file in the project folder, the one you made by copying
-`.env.example`. **After you change a setting, stop the API (`Ctrl+C`) and start it again.**
+`.env.example`. **After you change a setting, stop the API (`Ctrl+C`) and start it again.** The
+defaults lean towards safety: leaving out `ENVIRONMENT` and `AUTH_MODE` gets you `production` and
+`entra`, so `.env.example` sets the relaxed values needed for local use. A wrong value stops the API
+from starting, and the error names the setting but never its value.
 
-- The defaults lean towards safety. If you leave out `ENVIRONMENT` and `AUTH_MODE`, you get
-  `production` and `entra`, which refuse the shortcuts that are fine on your own computer.
-  `.env.example` sets the relaxed values for local use.
-- A wrong value stops the API from starting. The last line of the error names the setting but never
-  shows its value, for example
-  `ConfigurationError: Invalid configuration - PROVIDER_TIMEOUT_SECONDS: Input should be less than or equal to 30`.
-
-**The basics**
-
-| Setting | What it does | If you leave it out |
-| --- | --- | --- |
-| `ENVIRONMENT` | `development`, `test` or `production`. `production` is strict: it needs PostgreSQL, refuses `AUTH_MODE=dev`, refuses a database URL that still contains `CHANGE_ME` and switches the `/docs` page off. | `production` (the template sets `development`) |
-| `LOG_LEVEL` | How much the API writes to its log: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. | `INFO` |
-| `LOG_FORMAT` | `console` is easy to read. `json` is for log tools. | `json` (the template sets `console`) |
-
-**Who may use it**
-
-| Setting | What it does | If you leave it out |
-| --- | --- | --- |
-| `AUTH_MODE` | `dev`: no sign-in, and everyone is a local developer. `entra`: the API checks Microsoft Entra ID sign-in tokens. `dev` is refused when `ENVIRONMENT=production`. The dashboard cannot sign in yet, so it needs `dev` (see [Limitations](#limitations)). | `entra` (the template sets `dev`) |
-| `DEV_AUTH_ROLES` | The roles the local developer has in `dev` mode, separated by commas: `Admin`, `SecurityAnalyst` or `User`. Lookups need `SecurityAnalyst` or `Admin`. | `SecurityAnalyst` |
-| `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` | Identify your Microsoft Entra ID tenant and app. Both are required when `AUTH_MODE=entra`. | empty |
-| `ENTRA_AUDIENCE` | The audience a sign-in token must carry. | The value of `ENTRA_CLIENT_ID` |
-
-**Database and browser access**
-
-| Setting | What it does | If you leave it out |
-| --- | --- | --- |
-| `DATABASE_URL` | Where the data is kept. SQLite (`sqlite+pysqlite:///./cipherforge.db`) is for trying things out. PostgreSQL (`postgresql+psycopg://user:password@host:5432/name`) is for real use. If the password has symbols, URL-encode them (`@` becomes `%40`). | The API will not start. The template points at a local PostgreSQL. |
-| `CORS_ORIGINS` | Other web addresses that may call the API from a browser, separated by commas. Leave it empty when the dashboard reaches the API through its own web server, as Vite and nginx both do. `*` is refused. | Empty |
-
-**Providers and limits**
-
-| Setting | What it does | If you leave it out |
-| --- | --- | --- |
-| `ABUSEIPDB_API_KEY`, `OTX_API_KEY` | The provider keys. A provider with no key is skipped and shown as **Not configured**. The keys are never written to the logs or sent to the browser. | Empty |
-| `ABUSEIPDB_CACHE_TTL_SECONDS`, `OTX_CACHE_TTL_SECONDS` | How long a saved answer counts as fresh, in seconds: from 60 up to 30 days (2592000). | 21600 (6 hours) and 43200 (12 hours) |
-| `PROVIDER_TIMEOUT_SECONDS` | How long to wait for one provider before giving up on it: 1 to 30 seconds. | 10 |
-| `INVESTIGATE_RATE_LIMIT_PER_MINUTE` | How many investigations one user may start per minute: 1 to 600. Each API process counts in memory, so a restart resets the count. | 30 |
-
-**Docker only** (see [Path C](#run-everything-in-docker))
-
-| Setting | What it does | In `.env.example` |
-| --- | --- | --- |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Used to create the PostgreSQL database. Compose builds `DATABASE_URL` from them. The password must be letters and digits only. | `cipherforge`, `CHANGE_ME_local_only` (change it), `cipherforge` |
-| `FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT` | The ports on your computer. | 3000, 8000, 5432 |
-| `FORWARDED_ALLOW_IPS` | Which senders the API trusts to say where a request really came from (the `X-Forwarded-For` header). That address goes into the audit log. | Not in the file. Compose uses the private address ranges. |
-
-**Demo and dashboard development only**
-
-| Setting | What it does | If you leave it out |
-| --- | --- | --- |
-| `CIPHERFORGE_DEMO_RESET` | Set to `1` for one start to rebuild the demo's invented data. | Not set |
-| `CIPHERFORGE_DEMO_DB` | Use another demo database. It must be a `.db` file directly inside `backend/.demo/`. | `demo.db` |
-| `CIPHERFORGE_DEMO_ROLES` | The roles of the demo's user. | `SecurityAnalyst` |
-| `VITE_DEV_PROXY_TARGET` | Where the dashboard's development server sends API requests. Set it in the terminal that runs `npm run dev`, not in `.env`. | `http://127.0.0.1:8000` |
-
-The full list, with the reasons for each rule, is in [docs/deployment.md](docs/deployment.md).
-
-## When something goes wrong
-
-Find what you see in the left column. Commands are for Windows PowerShell, with the macOS and Linux
-version where it differs. If your problem is not here, read the last lines in Terminal 1 (the API):
-it prints a line for every problem and the line names the cause.
-
-**While installing**
-
-| What you see | What to do |
-| --- | --- |
-| `npm.ps1 cannot be loaded because running scripts is disabled on this system` | Windows blocks script files by default. Type `npm.cmd` instead of `npm`, and `npx.cmd` instead of `npx`. This guide already does. |
-| `python` is "not recognized", or it opens the Microsoft Store | Python is not installed, or Windows cannot find it. Install Python 3.12 or newer from <https://www.python.org/downloads/> and tick **Add python.exe to PATH**. Close the terminal and open a new one. |
-| `pip install` stops with an error | Check `python --version`. It must say 3.12 or higher. If you installed a newer Python after creating `backend/.venv`, delete that folder (`Remove-Item -Recurse -Force .venv`) and create it again. |
-| A warning that mentions `EBADENGINE` when you run `npm ci` | Your Node.js is older than 22.22. Install a newer one from <https://nodejs.org/en/download>. |
-| `ModuleNotFoundError: No module named 'app'` (or `'devtools'`) | You are in the wrong folder. Run the Python commands from the `backend` folder. |
-
-**While starting**
-
-| What you see | What to do |
-| --- | --- |
-| `Error: Port 5173 is already in use` (dashboard), or `[Errno 10048] ... only one usage of each socket address` (API) | Something already uses that port, often an earlier CipherForge that is still running. Paths A and B both use port 8000, so run only one at a time. Stop the old one, or [use another port](#free-a-port-or-use-another-one). |
-| Red text with `NativeCommandError` after `alembic upgrade head` | Harmless in Windows PowerShell 5.1: it paints normal messages red. If the last lines say `Running upgrade ...`, it worked. |
-| A long `Traceback` that ends with `ConfigurationError: Invalid configuration - NAME: ...` | A setting in `.env` is wrong. `NAME` is the setting. Fix it using the [Settings](#settings) tables and start again. |
-| The API starts, but your data is gone, or the tables are missing | You ran `alembic` and `uvicorn` from different folders, so each used its own SQLite file. Run both from the `backend` folder. |
-| Docker says it cannot connect to the daemon, or that `docker` is not found | Docker Desktop is not installed or not running. Start it and wait until it says it is running. |
-| Docker says a port is already allocated | Another program uses port 3000, 8000 or 5432. Change `FRONTEND_PORT`, `BACKEND_PORT` or `POSTGRES_PORT` in `.env`. |
-
-**While using the dashboard**
-
-| What you see | What it means and what to do |
-| --- | --- |
-| **API OFFLINE** in the top bar, or **Could not reach the API** | The dashboard cannot talk to the API. Is Terminal 1 still running? Does <http://127.0.0.1:8000/health> answer? If the API uses another port, see [below](#free-a-port-or-use-another-one). |
-| **The request timed out** | The API or a provider was slow. Try again in a moment. |
-| **Not signed in** | The API wants a sign-in, and the dashboard cannot sign in yet. Put `AUTH_MODE=dev` and `ENVIRONMENT=development` in `.env`, then restart the API. |
-| **Access denied** | Your role is not allowed to look things up, or to delete them. Set `DEV_AUTH_ROLES=SecurityAnalyst` in `.env`, then restart the API. |
-| **That request was not accepted** | CipherForge refused the indicator, for example a private address or an MD5 hash. The line under the title says why. See [What you can type](#what-you-can-type). |
-| **Rate limit reached** | You started more than 30 investigations in a minute. Wait for the number of seconds the notice shows. |
-| **The API reported an error** | The API had a problem. Try again shortly. If it keeps happening, read Terminal 1, and quote the reference code shown in the notice. It also appears in the API's log for that request. |
-| The delete box stays open and shows a red notice | The deletion did not happen, so nothing was deleted. The causes are the ones in the rows above (the API is offline, a time-out, or a role that is not allowed). Fix the cause and press the red button again, or press **Cancel**. |
-| **Unexpected response from the API** | The dashboard and the API are different versions. Update both to the same version. |
-| The **System status** screen says the database is **Unavailable** (or `/ready` answers `503`) | The API cannot reach its database. For Path B, check that `DATABASE_URL` points at your SQLite file and that you ran `alembic upgrade head` from `backend`. For Docker, check that the `postgres` container is running. |
-| Every result says **Not configured** or **Not assessed** | No API key is set. Follow [Add your API keys](#add-your-api-keys-optional) and restart the API. |
-| A provider card says **Rate limited** | The provider's daily allowance is used up. Wait, or try tomorrow. |
-| A provider card says **Error** | The provider could not be asked, or sent back something unusable. Try again, and check that the key is right. The provider code has never been run against the live services (see [Limitations](#limitations)), so please treat a persistent error as a bug to look into. |
-| The Overview says **Nothing here yet** | Normal on a new installation. Investigate something and it fills in. |
-
-### Free a port or use another one
-
-To **free a port** (here 8000), first look for the terminal where CipherForge is still running and press
-`Ctrl+C`. If you cannot find it, find the program that holds the port and stop it.
-
-Windows (PowerShell):
-
-```powershell
-Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object LocalPort, OwningProcess
-Stop-Process -Id 12345    # type the OwningProcess number you saw, instead of 12345
-```
-
-macOS or Linux:
-
-```bash
-lsof -i :8000             # shows the PID
-kill 12345                # type that PID, instead of 12345
-```
-
-To **use another port** instead, start the API on port 8001, and tell the dashboard where it is.
-
-Windows (PowerShell). Terminal 1, in `backend`:
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --port 8001
-```
-
-Terminal 2, in `frontend`:
-
-```powershell
-$env:VITE_DEV_PROXY_TARGET = "http://127.0.0.1:8001"
-npm.cmd run dev
-```
-
-macOS or Linux. Terminal 1, in `backend`:
-
-```bash
-.venv/bin/python -m uvicorn app.main:create_app --factory --port 8001
-```
-
-Terminal 2, in `frontend`:
-
-```bash
-VITE_DEV_PROXY_TARGET=http://127.0.0.1:8001 npm run dev
-```
-
-(For the demo, use `devtools.demo_server:create_demo_app` instead of `app.main:create_app`.) If the
-dashboard's own port 5173 is the one in use, add `-- --port 5174` to the last command, for example
-`npm.cmd run dev -- --port 5174`, and open <http://127.0.0.1:5174>.
+The full reference for every setting — authentication, the database, provider API keys and rate
+limits, Docker-only settings, and demo/development-only settings — is in
+**[docs/setup.md](docs/setup.md#environment-variables)**; the reasoning behind each rule is in
+[docs/deployment.md](docs/deployment.md). If something does not start or behave as expected, the
+symptom-by-symptom table in
+[docs/setup.md, Common setup problems](docs/setup.md#common-setup-problems) covers installation,
+startup and dashboard issues, including freeing or changing a port.
 
 ## Tests and quality checks
 
@@ -1695,7 +698,7 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
 - **The look was checked by measurement.** Automatic checks measured the layout at many window sizes,
   the text contrast and that each effect really runs. No formal design review has been done.
 - **The effects were not tuned for slow computers.** If the dashboard feels heavy, switch the effects
-  off (see [Visual effects and small screens](#visual-effects-and-small-screens)).
+  off (see [Visual effects and small screens](docs/user-guide.md#visual-effects-and-small-screens)).
 - **No screen reader has been used.** The accessibility checks are automatic ones: contrast, layout
   and keyboard use.
 - **The screenshots in this guide show demo data,** so their numbers are invented.
@@ -1731,6 +734,8 @@ This guide is the starting point. Each document below goes deeper on one subject
 
 | Document | What is in it |
 | --- | --- |
+| [docs/setup.md](docs/setup.md) | The full step-by-step install for all three paths, every environment variable, and troubleshooting. |
+| [docs/user-guide.md](docs/user-guide.md) | The screen-by-screen dashboard walkthrough, with a labelled picture for every screen and result type. |
 | [docs/project-status.md](docs/project-status.md) | The history of the project, phase by phase: what each phase added and what is still missing. |
 | [docs/architecture.md](docs/architecture.md) | How the pieces are built and how the planned ones would plug in, including the [threat-intelligence flow](docs/architecture.md#threat-intelligence-flow-phase-2) and the [motion layer](docs/architecture.md#aurora-forge-and-the-motion-layer). |
 | [docs/api.md](docs/api.md) | Every API endpoint, with the fields it accepts and returns. |

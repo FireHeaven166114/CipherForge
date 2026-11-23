@@ -339,6 +339,67 @@ rejected is not one. The attribute breakdowns read at most the 2,000 most recent
 the lookup figures at most 20,000 audit rows from the 14-day window. When a limit is reached the matching
 `scope` flag is `true`, and the dashboard says so instead of implying the figures are complete.
 
+## Trying it from a terminal
+
+With the API running, the fastest way to explore it is the interactive page at
+<http://127.0.0.1:8000/docs> (disabled when `ENVIRONMENT=production`). The examples below make the
+same calls from a terminal.
+
+Windows (PowerShell):
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/me
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/investigate -ContentType 'application/json' -Body '{"indicator": "8.8.8.8"}' | ConvertTo-Json -Depth 8
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/intel/indicators?sort=risk&limit=5" | ConvertTo-Json -Depth 5
+```
+
+macOS or Linux:
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/api/v1/me
+curl -s -X POST -H "Content-Type: application/json" -d '{"indicator": "8.8.8.8"}' http://127.0.0.1:8000/api/v1/intel/investigate
+curl -s "http://127.0.0.1:8000/api/v1/intel/indicators?sort=risk&limit=5"
+```
+
+(On Windows, `curl.exe` also works, but its quoting rules differ between PowerShell versions, so these
+examples use `Invoke-RestMethod`.)
+
+> **Always read `score.answered_sources`.** With no provider keys configured, `/investigate` answers
+> `risk_score: 0` and `classification: "informational"` because it has no evidence at all — that is
+> **not** the same as "clean". `answered_sources: 0` means no provider answered, so the result is
+> unknown. The dashboard makes this check for you and shows **Not assessed**; a script of your own
+> must make the same check.
+
+### Deleting indicators
+
+These commands investigate `8.8.8.8` and then delete exactly that indicator, exercising the `DELETE`
+route described above:
+
+Windows (PowerShell):
+
+```powershell
+$result = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/investigate -ContentType 'application/json' -Body '{"indicator": "8.8.8.8"}'
+Invoke-RestMethod -Method Delete -Uri "http://127.0.0.1:8000/api/v1/intel/indicators/$($result.indicator.indicator_id)"
+```
+
+macOS or Linux (copy the `indicator_id` from the first answer into the second command):
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d '{"indicator": "8.8.8.8"}' http://127.0.0.1:8000/api/v1/intel/investigate
+curl -s -X DELETE http://127.0.0.1:8000/api/v1/intel/indicators/PASTE-THE-ID-HERE
+```
+
+To delete several at once, send their ids to `bulk-delete` (up to 100 per request):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/intel/indicators/bulk-delete -ContentType 'application/json' -Body '{"indicator_ids": ["PASTE-ID-1", "PASTE-ID-2"]}'
+```
+
+There is no API call that deletes audit entries: the audit trail is append-only by design (see
+[security.md](security.md)).
+
 ## Roles
 
 | Role | Scope |
