@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from app.core.config import ConfigurationError, Settings, load_settings
+from app.core.errors import ApiError
 from app.main import create_app
 from app.security.auth import require_roles
 from app.security.roles import Role
@@ -78,6 +79,25 @@ def test_forbidden_uses_the_error_envelope(make_settings: Callable[..., Settings
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
+
+
+def test_api_error_carries_its_own_stable_code_and_headers(
+    make_settings: Callable[..., Settings],
+) -> None:
+    app = create_app(make_settings())
+
+    @app.get("/_test/expired")
+    def expired() -> None:
+        raise ApiError(410, "share_expired", "This link has expired.", headers={"X-Extra": "1"})
+
+    with TestClient(app) as client:
+        response = client.get("/_test/expired")
+
+    assert response.status_code == 410
+    error = response.json()["error"]
+    assert (error["code"], error["message"]) == ("share_expired", "This link has expired.")
+    assert error["correlation_id"] == response.headers["X-Correlation-ID"]
+    assert response.headers["X-Extra"] == "1"
 
 
 # --- configuration guards ----------------------------------------------------

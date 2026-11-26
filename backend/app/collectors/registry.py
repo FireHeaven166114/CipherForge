@@ -4,11 +4,11 @@ import httpx2
 
 from app import __version__
 from app.collectors.abuseipdb import AbuseIPDBCollector
-from app.collectors.base import Collector
+from app.collectors.base import CONNECT_TIMEOUT_SECONDS, Collector
 from app.collectors.otx import OTXCollector
+from app.collectors.threatfox import ThreatFoxCollector
+from app.collectors.virustotal import VirusTotalCollector
 from app.core.config import Settings
-
-CONNECT_TIMEOUT_SECONDS = 5.0
 
 
 def build_http_client(settings: Settings) -> httpx2.Client:
@@ -29,6 +29,8 @@ def build_collectors(settings: Settings, client: httpx2.Client) -> tuple[Collect
     """Adapters in display order. A missing API key leaves the adapter present but inactive."""
     abuseipdb_key = settings.abuseipdb_api_key
     otx_key = settings.otx_api_key
+    virustotal_key = settings.virustotal_api_key
+    threatfox_key = settings.threatfox_api_key
     return (
         AbuseIPDBCollector(
             api_key=abuseipdb_key.get_secret_value() if abuseipdb_key else None,
@@ -39,5 +41,21 @@ def build_collectors(settings: Settings, client: httpx2.Client) -> tuple[Collect
             api_key=otx_key.get_secret_value() if otx_key else None,
             client=client,
             cache_ttl_seconds=settings.otx_cache_ttl_seconds,
+        ),
+        VirusTotalCollector(
+            api_key=virustotal_key.get_secret_value() if virustotal_key else None,
+            client=client,
+            cache_ttl_seconds=settings.virustotal_cache_ttl_seconds,
+            base_url=settings.virustotal_base_url,
+            timeout_seconds=settings.virustotal_timeout_seconds,
+            max_retries=settings.virustotal_max_retries,
+        ),
+        ThreatFoxCollector(
+            api_key=threatfox_key.get_secret_value() if threatfox_key else None,
+            client=client,
+            cache_ttl_seconds=settings.threatfox_cache_ttl_seconds,
+            base_url=settings.threatfox_base_url,
+            timeout_seconds=settings.threatfox_timeout_seconds,
+            max_retries=settings.threatfox_max_retries,
         ),
     )

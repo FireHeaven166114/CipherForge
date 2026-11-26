@@ -6,6 +6,7 @@ Nothing here needs the network. Simulated answers are synthetic by construction.
 
 import hashlib
 import ipaddress
+import statistics
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.collectors.abuseipdb import AbuseIPDBCollector
 from app.collectors.base import Collector, ProviderResult, ProviderStatus
 from app.collectors.otx import OTXCollector
+from app.collectors.threatfox import ThreatFoxCollector
+from app.collectors.virustotal import VirusTotalCollector
+from app.core.timeutil import ist_day_start, today_ist
 from app.correlation.scoring import Classification, classify
 from app.database.session import build_engine, build_session_factory
 from app.models.audit import AuditLog
@@ -91,9 +95,15 @@ def test_catalogue_is_deterministic_and_covers_every_type() -> None:
 
 
 def test_catalogue_cannot_accuse_a_real_host() -> None:
+    samples = [HASH_SAMPLE.format(number=number).encode() for number in range(1, 500)]
     sample_hashes = {
-        hashlib.sha256(HASH_SAMPLE.format(number=number).encode()).hexdigest()
-        for number in range(1, 500)
+        IndicatorType.SHA256: {hashlib.sha256(sample).hexdigest() for sample in samples},
+        IndicatorType.SHA1: {
+            hashlib.sha1(sample, usedforsecurity=False).hexdigest() for sample in samples
+        },
+        IndicatorType.MD5: {
+            hashlib.md5(sample, usedforsecurity=False).hexdigest() for sample in samples
+        },
     }
     unallocated = ipaddress.ip_network(f"{UNALLOCATED_IPV6_PREFIX}::/16")
     for entry in build_catalogue():
@@ -110,8 +120,8 @@ def test_catalogue_cannot_accuse_a_real_host() -> None:
                     assert entry.tier is Tier.CLEAN
                 else:
                     assert host.endswith(DOCUMENTATION_SUFFIXES), host
-            case IndicatorType.SHA256:
-                assert entry.value in sample_hashes
+            case IndicatorType.MD5 | IndicatorType.SHA1 | IndicatorType.SHA256:
+                assert entry.value in sample_hashes[entry.indicator_type]
 
 
 def test_the_unallocated_prefix_is_accepted_by_the_real_normalizer() -> None:
@@ -144,11 +154,24 @@ def simulation() -> Iterator[Simulation]:
     client.close()
 
 
+def _expected_providers(indicator_type: IndicatorType) -> set[str]:
+    if indicator_type in IP_TYPES:
+        return {"abuseipdb", "otx", "virustotal", "threatfox"}
+    if indicator_type is IndicatorType.SHA1:
+        return {"otx", "virustotal"}  # ThreatFox cannot search by SHA-1
+    return {"otx", "virustotal", "threatfox"}
+
+
 def test_simulated_adapters_are_flagged_and_the_real_ones_are_not(simulation: Simulation) -> None:
     assert all(collector.simulated for collector in simulation.collectors)
-    assert {collector.name for collector in simulation.collectors} == {"abuseipdb", "otx"}
-    assert AbuseIPDBCollector.simulated is False
-    assert OTXCollector.simulated is False
+    assert {collector.name for collector in simulation.collectors} == {
+        "abuseipdb",
+        "otx",
+        "virustotal",
+        "threatfox",
+    }
+    for real in (AbuseIPDBCollector, OTXCollector, VirusTotalCollector, ThreatFoxCollector):
+        assert real.simulated is False
 
 
 def test_simulated_answers_parse_through_the_real_adapters(simulation: Simulation) -> None:
@@ -156,17 +179,20 @@ def test_simulated_answers_parse_through_the_real_adapters(simulation: Simulatio
         if entry.value in FAILURE_SAMPLES:
             continue
         results = simulation.lookup(entry.indicator_type, entry.value)
-        expected = {"abuseipdb", "otx"} if entry.indicator_type in IP_TYPES else {"otx"}
-        assert set(results) == expected
-        for result in results.values():
+        assert set(results) == _expected_providers(entry.indicator_type), entry
+        for name, result in results.items():
             assert result.status in (ProviderStatus.OK, ProviderStatus.NO_DATA), entry
-            if entry.tier in MALICIOUS_TIERS:
-                assert result.status is ProviderStatus.OK, entry
-                assert result.signal > 0, entry
+            if entry.tier not in MALICIOUS_TIERS:
+                assert result.signal == 0, entry
+            elif name == "threatfox" and result.status is ProviderStatus.NO_DATA:
+                # ThreatFox lists only some of the indicators the other providers know.
+                assert entry.tier is not Tier.CRITICAL, entry
+                assert result.signal == 0, entry
+            else:
+                assert result.status is ProviderStatus.OK, (name, entry)
+                assert result.signal > 0, (name, entry)
                 assert result.evidence_at is not None
                 assert result.evidence_at <= FIXED_NOW
-            else:
-                assert result.signal == 0, entry
 
 
 def test_simulated_answers_are_deterministic(simulation: Simulation) -> None:
@@ -195,6 +221,49 @@ def test_simulated_pulses_are_labelled_and_never_link_to_a_real_pulse(
             assert not pulse.get("id")
 
 
+def test_simulated_records_never_point_at_a_real_provider_page(simulation: Simulation) -> None:
+    seen = {"virustotal": 0, "threatfox": 0}
+    for entry in simulation.catalogue:
+        if entry.tier not in MALICIOUS_TIERS:
+            continue
+        results = simulation.lookup(entry.indicator_type, entry.value)
+        virustotal = results["virustotal"].summary
+        assert virustotal["provider_id"] is None
+        assert virustotal["provider_link"] is None
+        seen["virustotal"] += 1
+        if "threatfox" in results:
+            for match in results["threatfox"].summary.get("matches", []):
+                assert match["id"] is None
+                assert match["reference"] is None
+                assert match["malpedia_url"] is None
+                assert match["reporter"].endswith("(simulated)")
+                seen["threatfox"] += 1
+    assert all(seen.values()), seen
+
+
+def test_simulated_virustotal_and_threatfox_know_only_some_indicators(
+    simulation: Simulation,
+) -> None:
+    by_tier: dict[Tier, list[ProviderResult]] = {}
+    for entry in simulation.catalogue:
+        if entry.value in FAILURE_SAMPLES or entry.indicator_type is IndicatorType.SHA1:
+            continue
+        results = simulation.lookup(entry.indicator_type, entry.value)
+        by_tier.setdefault(entry.tier, []).append(results["threatfox"])
+        virustotal = results["virustotal"]
+        if entry.tier is Tier.UNKNOWN:
+            # No record is not a verdict: the answer says so instead of calling it harmless.
+            assert virustotal.status is ProviderStatus.NO_DATA
+            assert virustotal.summary["verdict"] == "not_found"
+        elif entry.tier is Tier.CLEAN:
+            assert virustotal.summary["verdict"] == "harmless"
+        else:
+            assert virustotal.summary["verdict"] in ("malicious", "suspicious")
+    assert all(r.status is ProviderStatus.OK for r in by_tier[Tier.CRITICAL])
+    partial = [r.status is ProviderStatus.OK for r in by_tier[Tier.MEDIUM]]
+    assert any(partial) and not all(partial), "ThreatFox covers only part of the medium tier"
+
+
 @pytest.mark.parametrize(
     ("value", "status"),
     [
@@ -207,9 +276,26 @@ def test_simulated_pulses_are_labelled_and_never_link_to_a_real_pulse(
 def test_failure_markers_surface_as_provider_failures(
     simulation: Simulation, value: str, status: ProviderStatus
 ) -> None:
-    result = simulation.lookup(IndicatorType.DOMAIN, value)["otx"]
-    assert result.status is status
-    assert not result.is_answer
+    results = simulation.lookup(IndicatorType.DOMAIN, value)
+    assert set(results) == {"otx", "virustotal", "threatfox"}
+    for result in results.values():
+        assert result.status is status
+        assert not result.is_answer
+
+
+@pytest.mark.parametrize("failing", ["otx", "virustotal", "threatfox"])
+def test_a_provider_down_marker_fails_only_that_provider(
+    simulation: Simulation, failing: str
+) -> None:
+    results = simulation.lookup(IndicatorType.DOMAIN, f"{failing}-down.example.net")
+    assert set(results) == {"otx", "virustotal", "threatfox"}
+    assert results[failing].status is ProviderStatus.ERROR
+    assert not results[failing].is_answer
+    for name, result in results.items():
+        if name != failing:
+            # The providers still up have plenty to say, so the failure sits beside answers.
+            assert result.status is ProviderStatus.OK, name
+            assert result.signal > 0, name
 
 
 # --- Seeded history ----------------------------------------------------------------------
@@ -220,9 +306,7 @@ def test_planned_history_is_replayable_and_covers_the_catalogue() -> None:
     plan = plan_history(catalogue, FIXED_NOW)
     assert plan == plan_history(catalogue, FIXED_NOW)
     assert [step.moment for step in plan] == sorted(step.moment for step in plan)
-    window_start = (FIXED_NOW - timedelta(days=HISTORY_DAYS - 1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    window_start = ist_day_start(today_ist(FIXED_NOW) - timedelta(days=HISTORY_DAYS - 1))
     assert all(window_start <= step.moment <= FIXED_NOW for step in plan)
     planned = {step.value for step in plan}
     assert {entry.value for entry in catalogue} <= planned
@@ -290,20 +374,35 @@ def test_seeded_scores_follow_the_methodology(seeded: Seeded) -> None:
     with seeded.session_factory() as session:
         indicators = session.scalars(select(ThreatIndicator)).all()
     assert len(indicators) == len(seeded.catalogue)
+    scores: dict[Tier, list[int]] = {}
     for row in indicators:
         tier = tiers[(row.indicator_type, row.indicator_value)]
         band = classify(row.risk_score)
         if row.indicator_value in FAILURE_SAMPLES:
             assert row.confidence == 0, "no provider answered, so it is not assessed"
-        elif tier in (Tier.CLEAN, Tier.UNKNOWN):
+            continue
+        scores.setdefault(tier, []).append(row.risk_score)
+        if tier in (Tier.CLEAN, Tier.UNKNOWN):
             assert band is Classification.INFORMATIONAL, row.indicator_value
-        elif row.indicator_type not in IP_TYPES:
-            # One provider only: never High or Critical on a single source's word.
-            assert band not in (Classification.HIGH, Classification.CRITICAL)
         elif tier is Tier.CRITICAL:
-            assert band in (Classification.HIGH, Classification.CRITICAL), row.indicator_value
+            assert band is Classification.CRITICAL, row.indicator_value
         elif tier is Tier.LOW:
             assert band in (Classification.LOW, Classification.MEDIUM), row.indicator_value
+        if band in (Classification.HIGH, Classification.CRITICAL):
+            # A single source's word is never enough: the methodology caps it at 60.
+            assert row.score_detail is not None
+            assert row.score_detail["supporting_sources"] >= 2, row.indicator_value
+
+    # The tiers are generated from evidence, so a stronger tier scores higher on the whole.
+    medians = {tier: statistics.median(values) for tier, values in scores.items()}
+    assert (
+        medians[Tier.UNKNOWN]
+        == medians[Tier.CLEAN]
+        < medians[Tier.LOW]
+        < medians[Tier.MEDIUM]
+        < medians[Tier.HIGH]
+        < medians[Tier.CRITICAL]
+    )
 
 
 def test_seeded_overview_is_rich_enough_to_demonstrate_the_dashboard(seeded: Seeded) -> None:
@@ -435,4 +534,6 @@ def test_create_demo_app_serves_a_simulated_seeded_dashboard(
         )
         assert limited.status_code == 200
         statuses = {view["provider"]: view["status"] for view in limited.json()["providers"]}
-        assert statuses["otx"] == "rate_limited"
+        assert statuses["abuseipdb"] == "unsupported"
+        for name in ("otx", "virustotal", "threatfox"):
+            assert statuses[name] == "rate_limited", name

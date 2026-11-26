@@ -37,6 +37,7 @@ test-results/
 *.sqlite3
 pgdata/
 backend/.demo/
+backend/data/
 
 # --- Editors / OS ---
 .idea/

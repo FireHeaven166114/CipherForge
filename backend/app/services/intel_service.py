@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.collectors.base import Collector, ProviderResult, ProviderStatus
+from app.collectors.base import Collector, ProviderResult, ProviderStatus, Reason, Verdict
 from app.correlation.scoring import (
     Classification,
     EvidenceState,
@@ -79,8 +79,8 @@ logger = logging.getLogger("cipherforge.intel")
 MIN_REFRESH_INTERVAL_SECONDS = 60
 MAX_TAGS = 20
 STATS_WINDOW = timedelta(hours=24)
-# Added to the provider timeout when waiting on a worker. httpx bounds each network operation
-# but not DNS resolution, so the service enforces its own deadline as well.
+# Added to a provider's time budget when waiting on its worker. httpx bounds each network
+# operation but not DNS resolution, so the service enforces its own deadline as well.
 _WAIT_GRACE_SECONDS = 7.0
 
 SortOrder = Literal["recent", "risk"]
@@ -96,6 +96,8 @@ INTERNAL_EVIDENCE = InternalEvidenceOut(
 _CACHE_HIT = "hit"
 _CACHE_MISS = "miss"
 _CACHE_NONE = "none"
+
+_VERDICTS = frozenset(verdict.value for verdict in Verdict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +142,8 @@ class _Outcome:
     cache: str
     # A provider call was attempted and produced no answer (error or rate limit).
     failed: bool = False
+    # Why the current attempt (or the missing configuration) produced no answer.
+    reason: Reason | None = None
 
 
 class IntelService:
@@ -155,7 +159,7 @@ class IntelService:
         self._collectors = tuple(collectors)
         self._http_client = http_client
         self._clock = clock
-        self._wait_seconds = provider_timeout_seconds + _WAIT_GRACE_SECONDS
+        self._provider_timeout = provider_timeout_seconds
         self._min_refresh = timedelta(seconds=min_refresh_interval_seconds)
         self._executor = ThreadPoolExecutor(
             max_workers=max(4, 2 * len(self._collectors)), thread_name_prefix="intel-lookup"
@@ -227,10 +231,7 @@ class IntelService:
             details={
                 "refresh": refresh,
                 "providers": {
-                    run.collector.name: {
-                        "status": run.result.status.value if run.result else outcome.status,
-                        "cache": outcome.cache,
-                    }
+                    run.collector.name: _audit_provider(run, outcome)
                     for run, outcome in zip(runs, outcomes, strict=True)
                 },
                 "score": score.score,
@@ -348,8 +349,16 @@ class IntelService:
                 needs_call = expired or (refresh and age >= self._min_refresh)
         return _Run(collector, source_id, skipped, latest, needs_call)
 
+    def _wait_seconds(self, collector: Collector) -> float:
+        """How long to wait on one provider's worker: its own total budget, plus a grace."""
+        return (collector.timeout_seconds or self._provider_timeout) + _WAIT_GRACE_SECONDS
+
     def _fetch(self, indicator: NormalizedIndicator, runs: Sequence[_Run]) -> None:
-        """Query the providers concurrently. Never raises: failures become results."""
+        """Query the providers concurrently. Never raises: failures become results.
+
+        Every provider has a deadline of its own, so one that hangs or retries for a long time
+        cannot cost another its answer.
+        """
         if not runs:
             return
         started = time.monotonic()
@@ -360,7 +369,7 @@ class IntelService:
             futures.append(self._executor.submit(context.run, run.collector.lookup, indicator))
         for run, future in zip(runs, futures, strict=True):
             collector = run.collector
-            remaining = max(0.0, self._wait_seconds - (time.monotonic() - started))
+            remaining = max(0.0, self._wait_seconds(collector) - (time.monotonic() - started))
             try:
                 run.result = future.result(timeout=remaining)
             except TimeoutError:
@@ -369,6 +378,7 @@ class IntelService:
                     collector.name,
                     ProviderStatus.ERROR,
                     message=f"{collector.display_name} did not respond in time.",
+                    reason=Reason.TIMEOUT,
                 )
             except Exception as exc:
                 logger.warning(
@@ -379,6 +389,7 @@ class IntelService:
                     collector.name,
                     ProviderStatus.ERROR,
                     message=f"Unexpected error while querying {collector.display_name}.",
+                    reason=Reason.UNAVAILABLE,
                 )
 
     # --- Read back (no provider calls) ----------------------------------------------
@@ -694,12 +705,14 @@ def _outcome(run: _Run, now: datetime) -> _Outcome:
         latest = run.latest
         attempted = result is not None
         message = result.message if result is not None else None
+        reason = result.reason if result is not None else None
         fresh = now - latest.fetched_at < timedelta(seconds=collector.cache_ttl_seconds)
         if message is None and not fresh and not collector.configured:
             message = (
                 f"{collector.display_name} is not configured, so this older answer "
                 "cannot be refreshed."
             )
+            reason = Reason.NOT_CONFIGURED
         return _Outcome(
             collector,
             EvidenceState.FRESH if fresh else EvidenceState.STALE,
@@ -709,6 +722,7 @@ def _outcome(run: _Run, now: datetime) -> _Outcome:
             message,
             _CACHE_MISS if attempted else _CACHE_HIT,
             failed=attempted,
+            reason=reason,
         )
 
     if run.skipped is not None:
@@ -721,6 +735,7 @@ def _outcome(run: _Run, now: datetime) -> _Outcome:
             False,
             run.skipped.message,
             _CACHE_NONE,
+            reason=run.skipped.reason,
         )
 
     if result is not None:
@@ -733,6 +748,7 @@ def _outcome(run: _Run, now: datetime) -> _Outcome:
             result.message,
             _CACHE_MISS,
             failed=True,
+            reason=result.reason,
         )
 
     return _Outcome(
@@ -747,6 +763,17 @@ def _outcome(run: _Run, now: datetime) -> _Outcome:
         ),
         _CACHE_NONE,
     )
+
+
+def _audit_provider(run: _Run, outcome: _Outcome) -> dict[str, str]:
+    """One provider's part in the audit record: what happened, never what it said."""
+    detail = {
+        "status": run.result.status.value if run.result else outcome.status,
+        "cache": outcome.cache,
+    }
+    if outcome.failed and outcome.reason is not None:
+        detail["reason"] = outcome.reason.value
+    return detail
 
 
 def _strings(value: Any) -> tuple[str, ...]:
@@ -832,6 +859,14 @@ def _indicator_out(indicator: ThreatIndicator, override: ScoreResult | None = No
     )
 
 
+def _verdict(observation: ThreatObservation | None) -> Verdict | None:
+    """The provider's own label for what it found, if the stored answer carries a known one."""
+    if observation is None:
+        return None
+    value = (observation.summary or {}).get("verdict")
+    return Verdict(value) if isinstance(value, str) and value in _VERDICTS else None
+
+
 def _provider_view(outcome: _Outcome) -> ProviderView:
     collector = outcome.collector
     observation = outcome.observation
@@ -855,4 +890,6 @@ def _provider_view(outcome: _Outcome) -> ProviderView:
         summary=dict(observation.summary or {}) if observation else {},
         tags=list(observation.tags or []) if observation else [],
         message=outcome.message,
+        verdict=_verdict(observation),
+        reason=outcome.reason,
     )

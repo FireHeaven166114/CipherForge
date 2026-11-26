@@ -1,1 +1,1 @@
-"""Detection rules over network telemetry. Planned for Phase 5; not implemented yet."""
+"""Detection rules. Today that is the network-monitoring rule set in ``network_rules``."""

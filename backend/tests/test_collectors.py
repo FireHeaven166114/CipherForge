@@ -1,7 +1,6 @@
 """Provider adapters against canned HTTP responses (no network, no API keys)."""
 
 import gzip
-import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -20,50 +19,18 @@ from app.collectors.base import (
 from app.collectors.otx import OTXCollector, parse_otx, pulse_signal
 from app.collectors.registry import build_collectors, build_http_client
 from app.core.config import Settings
-from app.core.logging_config import configure_logging
 from app.models.enums import IndicatorType
-from app.services.normalization import NormalizedIndicator, normalize_indicator
+from app.services.normalization import NormalizedIndicator
+from tests.provider_helpers import (
+    KEY,
+    Wire,
+    assert_nothing_sensitive_logged,
+    build,
+    indicator,
+    iso,
+)
 
-KEY = "unit-test-api-key-0123456789"
 PULSE_ID = "5f1c" + "0" * 20
-
-
-def iso(days_ago: float = 0.0) -> str:
-    return (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
-
-
-def indicator(value: str) -> NormalizedIndicator:
-    return normalize_indicator(value)
-
-
-class Wire:
-    """A canned HTTP exchange that records every request it receives."""
-
-    def __init__(
-        self,
-        status: int = 200,
-        *,
-        body: Any = None,
-        content: bytes | None = None,
-        headers: dict[str, str] | None = None,
-        error: Exception | None = None,
-    ) -> None:
-        self.calls: list[httpx2.Request] = []
-        self._status, self._body, self._content = status, body, content
-        self._headers, self._error = headers, error
-
-    def __call__(self, request: httpx2.Request) -> httpx2.Response:
-        self.calls.append(request)
-        if self._error is not None:
-            raise self._error
-        if self._content is not None:
-            return httpx2.Response(self._status, content=self._content, headers=self._headers)
-        return httpx2.Response(self._status, json=self._body, headers=self._headers)
-
-
-def build(cls: type[Collector], wire: Wire, *, key: str | None = KEY) -> Collector:
-    client = httpx2.Client(transport=httpx2.MockTransport(wire), follow_redirects=False)
-    return cls(api_key=key, client=client, cache_ttl_seconds=3600)
 
 
 def abuse_payload(**overrides: Any) -> dict[str, Any]:
@@ -508,23 +475,6 @@ class _ExplodingCollector(Collector):
         raise KeyError(f"leaky {api_key} {indicator.indicator_value}")
 
 
-@pytest.fixture
-def production_logging(
-    make_settings: Callable[..., Settings], caplog: pytest.LogCaptureFixture
-) -> None:
-    """Apply the application's real logging policy, then capture whatever it lets through."""
-    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
-        logging.getLogger(name).setLevel(logging.NOTSET)
-    configure_logging(make_settings())
-    caplog.set_level(logging.DEBUG)
-
-
-def _assert_nothing_sensitive_logged(caplog: pytest.LogCaptureFixture, *needles: str) -> None:
-    rendered = "\n".join(f"{record.getMessage()} {vars(record)}" for record in caplog.records)
-    for needle in (KEY, *needles):
-        assert needle not in rendered
-
-
 @pytest.mark.usefixtures("production_logging")
 def test_parser_bugs_degrade_one_provider_without_leaking(
     caplog: pytest.LogCaptureFixture,
@@ -534,7 +484,7 @@ def test_parser_bugs_degrade_one_provider_without_leaking(
     assert result.status is ProviderStatus.ERROR
     assert KEY not in (result.message or "")
     assert "8.8.8.8" not in (result.message or "")
-    _assert_nothing_sensitive_logged(caplog, "8.8.8.8")
+    assert_nothing_sensitive_logged(caplog, "8.8.8.8")
 
 
 @pytest.mark.usefixtures("production_logging")
@@ -563,22 +513,41 @@ def test_logs_never_contain_the_indicator_or_the_api_key(
     assert any(record.getMessage() == "provider_lookup" for record in caplog.records), (
         "each lookup should leave an operational log line"
     )
-    _assert_nothing_sensitive_logged(caplog, secret)
+    assert_nothing_sensitive_logged(caplog, secret)
 
 
 def test_registry_builds_providers_in_display_order(
     make_settings: Callable[..., Settings],
 ) -> None:
     settings = make_settings(
-        abuseipdb_api_key=KEY, abuseipdb_cache_ttl_seconds=120, provider_timeout_seconds=7
+        abuseipdb_api_key=KEY,
+        abuseipdb_cache_ttl_seconds=120,
+        provider_timeout_seconds=7,
+        threatfox_api_key=KEY,
+        threatfox_cache_ttl_seconds=300,
+        threatfox_timeout_seconds=12,
+        threatfox_max_retries=1,
     )
     client = build_http_client(settings)
 
-    abuse, otx = build_collectors(settings, client)
+    abuse, otx, virustotal, threatfox = build_collectors(settings, client)
 
-    assert (abuse.name, otx.name) == ("abuseipdb", "otx")
-    assert abuse.configured and not otx.configured
+    assert [c.name for c in (abuse, otx, virustotal, threatfox)] == [
+        "abuseipdb",
+        "otx",
+        "virustotal",
+        "threatfox",
+    ]
+    assert [c.configured for c in (abuse, otx, virustotal, threatfox)] == [
+        True,
+        False,
+        False,
+        True,
+    ]
     assert abuse.cache_ttl_seconds == 120
+    assert (threatfox.cache_ttl_seconds, threatfox.timeout_seconds) == (300, 12)
+    assert abuse.timeout_seconds is None, "the older adapters keep the shared client's timeouts"
+    assert virustotal.timeout_seconds == settings.virustotal_timeout_seconds
     assert client.follow_redirects is False
     assert client.timeout.read == 7
     assert client.headers["User-Agent"].startswith("CipherForge/")

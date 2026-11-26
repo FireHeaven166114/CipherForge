@@ -88,10 +88,18 @@ def test_type_and_value_are_unique_together(session: Session) -> None:
         session.commit()
 
 
+@pytest.mark.parametrize("hash_type", ["md5", "sha1", "sha256"])
+def test_every_supported_hash_type_can_be_stored(session: Session, hash_type: str) -> None:
+    session.add(_indicator(indicator_type=hash_type, indicator_value="a" * 32))
+    session.commit()
+
+    assert session.scalars(select(ThreatIndicator.indicator_type)).one() == hash_type
+
+
 @pytest.mark.parametrize(
     "bad_values",
     [
-        {"indicator_type": "md5"},
+        {"indicator_type": "sha512"},
         {"status": "unknown"},
         {"risk_score": 101},
         {"risk_score": -1},

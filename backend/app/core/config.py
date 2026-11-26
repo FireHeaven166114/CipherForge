@@ -6,10 +6,14 @@ application from starting (fail closed). Error messages name the offending
 setting but never echo its value, so a typo cannot leak a secret into logs.
 """
 
+import base64
+import binascii
+import re
 import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     Field,
@@ -26,6 +30,7 @@ from app import __version__
 from app.security.roles import Role
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 Environment = Literal["development", "test", "production"]
 AuthMode = Literal["dev", "entra"]
@@ -34,6 +39,15 @@ LogFormat = Literal["json", "console"]
 
 # Template files ship credentials such as CHANGE_ME_local_only; production must not accept them.
 _PLACEHOLDER_MARKER = "CHANGE_ME"
+
+# Hosts for which a plain-http provider URL is accepted (local mock servers in tests and demos).
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_BASE64URL = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
+MASTER_KEY_BYTES = 32
+
+DEFAULT_SUSPICIOUS_PORTS = (23, 135, 139, 445, 1433, 3389, 4444, 5900, 6667, 31337)
+DEFAULT_EXPECTED_PROTOCOLS = ("tcp", "udp", "icmp", "icmpv6", "igmp")
+_PROTOCOL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,15}$")
 
 
 class ConfigurationError(RuntimeError):
@@ -89,7 +103,78 @@ class Settings(BaseSettings):
     provider_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
     investigate_rate_limit_per_minute: int = Field(default=30, ge=1, le=600)
 
-    @field_validator("abuseipdb_api_key", "otx_api_key", mode="after")
+    # VirusTotal API v3 and ThreatFox (abuse.ch). The timeout is the budget for one lookup,
+    # retries included; retries cover only timeouts, connection failures and 5xx answers.
+    virustotal_api_key: SecretStr | None = None
+    virustotal_base_url: str = "https://www.virustotal.com/api/v3"
+    virustotal_timeout_seconds: float = Field(default=15.0, ge=1.0, le=30.0)
+    virustotal_max_retries: int = Field(default=2, ge=0, le=5)
+    virustotal_cache_ttl_seconds: int = Field(default=24 * 3600, ge=60, le=30 * 86400)
+    threatfox_api_key: SecretStr | None = None
+    threatfox_base_url: str = "https://threatfox-api.abuse.ch/api/v1"
+    threatfox_timeout_seconds: float = Field(default=15.0, ge=1.0, le=30.0)
+    threatfox_max_retries: int = Field(default=2, ge=0, le=5)
+    threatfox_cache_ttl_seconds: int = Field(default=6 * 3600, ge=60, le=30 * 86400)
+
+    # Every user-facing timestamp is shown in Indian Standard Time. Storage and API values stay
+    # UTC, so the setting only names the display zone and accepts nothing else.
+    app_timezone: Literal["Asia/Kolkata"] = "Asia/Kolkata"
+
+    # Network monitoring. Thresholds are development starting points, not security standards:
+    # tune them to the monitored network.
+    external_enrichment_enabled: bool = True
+    network_retention_hours: int = Field(default=72, ge=1, le=24 * 90)
+    max_active_flows: int = Field(default=10_000, ge=100, le=1_000_000)
+    monitoring_buffer_size: int = Field(default=10_000, ge=100, le=1_000_000)
+    network_max_pcap_size_mb: int = Field(default=50, ge=1, le=500)
+    network_enrichment_max_ips: int = Field(default=25, ge=1, le=200)
+    # Enrichment looks addresses up one at a time at this pace. The default stays inside
+    # VirusTotal's free public quota (4 requests per minute); raise it only with a higher quota.
+    network_enrichment_max_per_minute: int = Field(default=4, ge=1, le=60)
+    # A flow with no packets for this long is closed and written to the database.
+    flow_idle_timeout_seconds: int = Field(default=60, ge=5, le=3600)
+    # Flow rows kept per session; the oldest are dropped first once a session exceeds this.
+    network_max_stored_flows: int = Field(default=20_000, ge=100, le=1_000_000)
+    # A public address whose existing CipherForge risk score is at least this (61 is the "high"
+    # band) raises a known-malicious-address alert.
+    known_malicious_min_score: int = Field(default=61, ge=1, le=100)
+    port_scan_threshold: int = Field(default=20, ge=2, le=65_535)
+    port_scan_window_seconds: int = Field(default=60, ge=1, le=3600)
+    connection_rate_threshold: int = Field(default=100, ge=2, le=1_000_000)
+    connection_rate_window_seconds: int = Field(default=60, ge=1, le=3600)
+    syn_rate_threshold: int = Field(default=200, ge=2, le=10_000_000)
+    syn_rate_window_seconds: int = Field(default=10, ge=1, le=3600)
+    suspicious_port_threshold: int = Field(default=25, ge=2, le=1_000_000)
+    suspicious_port_window_seconds: int = Field(default=60, ge=1, le=3600)
+    suspicious_ports: Annotated[list[int], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_SUSPICIOUS_PORTS)
+    )
+    high_volume_threshold_mb: int = Field(default=50, ge=1, le=1_000_000)
+    high_volume_window_seconds: int = Field(default=60, ge=1, le=3600)
+    expected_protocols: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_EXPECTED_PROTOCOLS)
+    )
+
+    # Encrypted file sharing. Without a valid master key the feature reports itself as not
+    # configured; a malformed key stops the application from starting.
+    cipherforge_master_key: SecretStr | None = None
+    encrypted_file_storage_path: Path = BACKEND_ROOT / "data" / "encrypted-files"
+    max_encrypted_file_size_mb: int = Field(default=25, ge=1, le=100)
+    default_share_expiry_hours: int = Field(default=24, ge=1, le=24 * 365)
+    max_share_expiry_hours: int = Field(default=24 * 30, ge=1, le=24 * 365)
+    max_share_downloads: int = Field(default=100, ge=1, le=10_000)
+    file_upload_rate_limit_per_minute: int = Field(default=10, ge=1, le=600)
+    share_create_rate_limit_per_minute: int = Field(default=10, ge=1, le=600)
+    share_download_rate_limit_per_minute: int = Field(default=30, ge=1, le=600)
+    share_password_attempt_limit: int = Field(default=5, ge=1, le=100)
+
+    @field_validator(
+        "abuseipdb_api_key",
+        "otx_api_key",
+        "virustotal_api_key",
+        "threatfox_api_key",
+        mode="after",
+    )
     @classmethod
     def _clean_api_key(cls, value: SecretStr | None) -> SecretStr | None:
         if value is None:
@@ -101,6 +186,91 @@ class Settings(BaseSettings):
         if not raw.isascii() or any(ord(char) <= 32 or ord(char) == 127 for char in raw):
             raise ValueError("must not contain whitespace or control characters")
         return SecretStr(raw)
+
+    @field_validator("virustotal_base_url", "threatfox_base_url", mode="after")
+    @classmethod
+    def _validate_provider_url(cls, value: str) -> str:
+        cleaned = value.strip().rstrip("/")
+        try:
+            parsed = urlsplit(cleaned)
+            host = parsed.hostname
+        except ValueError:
+            raise ValueError("is not a valid URL") from None
+        if parsed.scheme not in {"https", "http"} or not host:
+            raise ValueError("must be an http(s) URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("must not contain credentials, a query string or a fragment")
+        if parsed.scheme == "http" and host not in _LOOPBACK_HOSTS:
+            # The API key is sent to this host, so it must not travel in clear text.
+            raise ValueError("must use https (plain http is accepted only for loopback)")
+        return cleaned
+
+    @field_validator("cipherforge_master_key", mode="after")
+    @classmethod
+    def _validate_master_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        raw = value.get_secret_value().strip()
+        if not raw:
+            return None
+        message = f"must be {MASTER_KEY_BYTES} random bytes encoded as base64url"
+        if not _BASE64URL.fullmatch(raw):
+            raise ValueError(message)
+        try:
+            decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        except (binascii.Error, ValueError):
+            raise ValueError(message) from None
+        if len(decoded) != MASTER_KEY_BYTES:
+            raise ValueError(message)
+        if len(set(decoded)) < 8:
+            raise ValueError("does not look random; generate a new key")
+        return SecretStr(raw)
+
+    @field_validator("encrypted_file_storage_path", mode="before")
+    @classmethod
+    def _default_blank_storage_path(cls, value: Any) -> Any:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return BACKEND_ROOT / "data" / "encrypted-files"
+        return value
+
+    @field_validator("encrypted_file_storage_path", mode="after")
+    @classmethod
+    def _absolute_storage_path(cls, value: Path) -> Path:
+        # A relative path would move with the working directory; anchor it to the backend folder.
+        return value if value.is_absolute() else BACKEND_ROOT / value
+
+    @field_validator("suspicious_ports", mode="before")
+    @classmethod
+    def _parse_ports(cls, value: Any) -> Any:
+        value = _split_csv(value)
+        if not isinstance(value, list):
+            return value
+        try:
+            return [int(item) for item in value]
+        except (TypeError, ValueError):
+            raise ValueError("must be a comma separated list of port numbers") from None
+
+    @field_validator("suspicious_ports", mode="after")
+    @classmethod
+    def _check_ports(cls, value: list[int]) -> list[int]:
+        if not all(1 <= port <= 65_535 for port in value):
+            raise ValueError("ports must be between 1 and 65535")
+        return sorted(set(value))
+
+    @field_validator("expected_protocols", mode="before")
+    @classmethod
+    def _parse_protocols(cls, value: Any) -> Any:
+        value = _split_csv(value)
+        if isinstance(value, list):
+            return [str(item).strip().lower() for item in value]
+        return value
+
+    @field_validator("expected_protocols", mode="after")
+    @classmethod
+    def _check_protocols(cls, value: list[str]) -> list[str]:
+        if not value or not all(_PROTOCOL_NAME.fullmatch(name) for name in value):
+            raise ValueError("must list protocol names such as tcp,udp,icmp")
+        return list(dict.fromkeys(value))
 
     @field_validator("dev_auth_roles", mode="before")
     @classmethod
@@ -162,6 +332,8 @@ class Settings(BaseSettings):
             and _PLACEHOLDER_MARKER in self.database_url.get_secret_value().upper()
         ):
             raise ValueError("DATABASE_URL still contains a CHANGE_ME placeholder")
+        if self.default_share_expiry_hours > self.max_share_expiry_hours:
+            raise ValueError("DEFAULT_SHARE_EXPIRY_HOURS must not exceed MAX_SHARE_EXPIRY_HOURS")
         return self
 
     @property
@@ -183,6 +355,14 @@ class Settings(BaseSettings):
     @property
     def entra_expected_audience(self) -> str | None:
         return self.entra_audience or self.entra_client_id
+
+    @property
+    def master_key(self) -> bytes | None:
+        """The raw 32-byte key-encryption key, or None when file sharing is not configured."""
+        if self.cipherforge_master_key is None:
+            return None
+        raw = self.cipherforge_master_key.get_secret_value()
+        return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
 
     def secret_values(self) -> list[str]:
         """Plain-text secrets that must never appear in logs."""

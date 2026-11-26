@@ -11,6 +11,7 @@ pythonpath = ["."]
 addopts = "-ra --strict-markers"
 markers = [
     "integration: needs a real PostgreSQL; set TEST_DATABASE_URL to enable",
+    "live: calls a real threat-intelligence provider; set CIPHERFORGE_LIVE_TESTS=1 and the provider's API key to enable",
 ]
 
 [tool.ruff]

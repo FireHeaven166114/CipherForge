@@ -20,9 +20,11 @@ All arithmetic is integer (thousandths) so results never depend on float roundin
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
+
+from app.core.timeutil import format_ist
 
 METHODOLOGY = "intel-risk-v1"
 
@@ -345,7 +347,7 @@ def _provider_detail(item: ProviderEvidence, signal: int, weight: int) -> str:
     if signal == 0:
         return "No malicious signal reported by this provider."
     when = (
-        f"latest activity {item.evidence_at.astimezone(UTC):%Y-%m-%d}"
+        f"latest activity {format_ist(item.evidence_at)}"
         if item.evidence_at
         else "activity date not reported"
     )
@@ -380,7 +382,7 @@ def _uncertainty(
                 f"{item.display_name} could not be queried, so it contributed no evidence."
             )
         elif item.state is EvidenceState.STALE:
-            since = f" ({item.fetched_at.astimezone(UTC):%Y-%m-%d})" if item.fetched_at else ""
+            since = f" ({format_ist(item.fetched_at)})" if item.fetched_at else ""
             notes.append(
                 f"{item.display_name}'s latest answer{since} is older than its cache window; "
                 "investigate again to refresh it."

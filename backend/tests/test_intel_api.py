@@ -21,9 +21,10 @@ from fastapi.testclient import TestClient
 from httpx2 import Response
 from sqlalchemy import select
 
-from app.collectors.base import ProviderStatus
+from app.collectors.base import ProviderFailure, ProviderStatus, Reason
 from app.main import create_app
 from app.models.audit import AuditLog
+from app.models.enums import IndicatorType
 from app.models.threat import ThreatIndicator, ThreatObservation
 from app.services.intel_service import IntelService, RequestContext
 from tests.conftest import CLIENT_ID, TENANT_ID, TokenFactory
@@ -33,7 +34,10 @@ from tests.intel_helpers import (
     ActsWhenAsked,
     Clock,
     FakeAbuse,
+    FakeCollector,
     FakeOtx,
+    FakeThreatFox,
+    FakeVirusTotal,
     answer,
     failure,
 )
@@ -130,6 +134,7 @@ def build_api(
             *,
             abuse: FakeAbuse | None = None,
             otx: FakeOtx | None = None,
+            extra: Sequence[FakeCollector] = (),
             client_address: str = CLIENT_ADDRESS,
             **settings: Any,
         ) -> Api:
@@ -153,7 +158,7 @@ def build_api(
             app = create_app(
                 make_settings(**options),
                 token_validator=entra_validator,
-                intel_service=IntelService([abuse, otx], clock=clock),
+                intel_service=IntelService([abuse, otx, *extra], clock=clock),
             )
             client = stack.enter_context(TestClient(app, client=(client_address, 50000)))
             api = Api(app, client, clock, abuse, otx, tokens, analyst={})
@@ -395,7 +400,7 @@ def test_equivalent_spellings_resolve_to_one_indicator(api: Api) -> None:
 
 REJECTED = {
     "private-address": "10.0.0.1",
-    "md5-hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "sha512-hash": "d" * 128,
     "ftp-url": "ftp://example.com/payload",
     "script-tag": "<script>alert(1)</script>",
     "sql-quote": "' OR 1=1 --",
@@ -522,6 +527,53 @@ def test_a_failing_provider_is_reported_without_failing_the_investigation(
     assert providers["otx"]["signal"] is None
     assert body["score"]["score"] == 45  # one source alone is capped well below Critical
     assert [audit.result for audit in api.audit] == ["partial"]
+
+
+def test_each_provider_carries_its_own_verdict_and_the_reason_for_a_failure(
+    build_api: ApiFactory, clock: Clock
+) -> None:
+    virustotal = FakeVirusTotal(
+        [
+            answer(
+                "virustotal",
+                signal=STRONG,
+                evidence_at=clock.ago(days=1),
+                summary={"verdict": "malicious"},
+            )
+        ]
+    )
+    threatfox = FakeThreatFox(
+        [
+            ProviderFailure(
+                ProviderStatus.ERROR,
+                "ThreatFox rejected the configured credentials.",
+                Reason.AUTH_FAILED,
+            )
+        ]
+    )
+    api = build_api(extra=[virustotal, threatfox])
+
+    response = api.investigate(IP)
+
+    assert response.status_code == 200
+    body = response.json()
+    providers = {provider["provider"]: provider for provider in body["providers"]}
+    assert list(providers) == ["abuseipdb", "otx", "virustotal", "threatfox"]
+    labelled = {
+        name: (view["status"], view["verdict"], view["reason"]) for name, view in providers.items()
+    }
+    assert labelled == {
+        "abuseipdb": ("ok", None, None),
+        "otx": ("ok", None, None),
+        "virustotal": ("ok", "malicious", None),
+        "threatfox": ("error", None, "auth_failed"),
+    }
+    assert providers["threatfox"]["message"] == "ThreatFox rejected the configured credentials."
+    assert body["score"]["answered_sources"] == 3
+    [audit] = api.audit
+    assert audit.result == "partial"
+    assert audit.details["providers"]["threatfox"]["reason"] == "auth_failed"
+    assert "reason" not in audit.details["providers"]["virustotal"]
 
 
 def test_with_no_provider_configured_the_response_says_so(build_api: ApiFactory) -> None:
@@ -809,7 +861,7 @@ def test_stats_summarise_the_stored_indicators(seeded: tuple[Api, dict[str, str]
             "high": 1,
             "critical": 0,
         },
-        "by_type": {"ipv4": 1, "ipv6": 0, "domain": 2, "url": 0, "sha256": 1},
+        "by_type": {"ipv4": 1, "ipv6": 0, "domain": 2, "url": 0, "md5": 0, "sha1": 0, "sha256": 1},
         "lookups_last_24h": 4,
         "providers": [
             {
@@ -823,7 +875,7 @@ def test_stats_summarise_the_stored_indicators(seeded: tuple[Api, dict[str, str]
                 "name": "otx",
                 "display_name": "AlienVault OTX",
                 "configured": True,
-                "supported_types": ["domain", "ipv4", "ipv6", "sha256", "url"],
+                "supported_types": ["domain", "ipv4", "ipv6", "md5", "sha1", "sha256", "url"],
                 "simulated": False,
             },
         ],
@@ -863,6 +915,8 @@ def test_the_overview_summarises_the_stored_data(seeded: tuple[Api, dict[str, st
         "ipv6",
         "domain",
         "url",
+        "md5",
+        "sha1",
         "sha256",
     ]
     assert [item["indicator_id"] for item in body["top_risk"]][:2] == [ids["ip"], ids["domain"]]
@@ -883,7 +937,7 @@ def test_the_overview_of_an_empty_database_is_complete_and_zeroed(api: Api) -> N
     assert set(body["kpis"].values()) == {0}
     assert len(body["series"]) == 14
     assert [len(row["hours"]) for row in body["activity"]] == [24] * 7
-    assert len(body["matrix"]) == 5
+    assert len(body["matrix"]) == len(IndicatorType)
     for facet in ("countries", "malware_families", "attack_techniques", "tags"):
         assert body[facet] == []
     assert body["top_risk"] == [] and body["recent"] == []

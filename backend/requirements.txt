@@ -11,5 +11,11 @@ psycopg[binary]==3.3.7
 # TestClient also prefers it. Provider adapters and tests both use it.
 httpx2==2.16.0
 PyJWT[crypto]==2.15.1
+# AES-256-GCM and Argon2id for encrypted file sharing (also what PyJWT's crypto extra uses).
+cryptography==50.0.2
+# IANA time-zone database; Windows has none, so zoneinfo (Asia/Kolkata) needs this package.
+tzdata==2026.6
+# PCAP/PCAPNG parsing and live packet capture (Npcap on Windows, libpcap on Linux).
+scapy==2.8.0
 # IDNA 2008 / UTS 46 handling for internationalised domain names in indicator normalisation.
 idna==3.20

@@ -10,12 +10,16 @@ from app.services.normalization import (
     MAX_INDICATOR_LENGTH,
     InvalidIndicatorError,
     NormalizedIndicator,
+    is_public_address,
     normalize_indicator,
 )
 
 IPV4, IPV6 = IndicatorType.IPV4, IndicatorType.IPV6
 DOMAIN, URL, SHA256 = IndicatorType.DOMAIN, IndicatorType.URL, IndicatorType.SHA256
+MD5, SHA1 = IndicatorType.MD5, IndicatorType.SHA1
 HASH = "a" * 32 + "B" * 32
+SHA1_HASH = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+MD5_HASH = "d41d8cd98f00b204e9800998ecf8427e"
 
 VALID = [
     # IPv4 / IPv6
@@ -59,9 +63,13 @@ VALID = [
     ("http://example.com/a?b[]=1&c=%2F", URL, "http://example.com/a?b[]=1&c=%2F"),
     ("http://b\u00fccher.example.net/", URL, "http://xn--bcher-kva.example.net/"),
     ("http://example.com/#only-fragment", URL, "http://example.com/"),
-    # SHA-256
+    # File hashes: the type follows the length, the value is lower-cased
     (HASH, SHA256, HASH.lower()),
     (f"  {HASH}  ", SHA256, HASH.lower()),
+    (SHA1_HASH.upper(), SHA1, SHA1_HASH),
+    (f"\t{SHA1_HASH}\n", SHA1, SHA1_HASH),
+    (MD5_HASH.upper(), MD5, MD5_HASH),
+    (f"  {MD5_HASH}  ", MD5, MD5_HASH),
 ]
 
 
@@ -130,10 +138,16 @@ REJECTED = [
     "8.8.8.8:443",
     "2606:4700:4700::1111%eth0",
     # Unsupported hashes and look-alikes
-    "d41d8cd98f00b204e9800998ecf8427e",
-    "da39a3ee5e6b4b0d3255bfef95601890afd80709",
     "d" * 128,
     "g" * 64,
+    "g" * 40,
+    "g" * 32,
+    "a" * 31,
+    "a" * 33,
+    "a" * 39,
+    "a" * 41,
+    "a" * 63,
+    "a" * 65,
     # Domains
     "localhost",
     "printer.local",
@@ -205,14 +219,66 @@ def test_non_text_input_is_rejected() -> None:
         normalize_indicator(b"8.8.8.8")  # type: ignore[arg-type]
 
 
-def test_unsupported_hash_message_points_to_sha256() -> None:
-    with pytest.raises(InvalidIndicatorError, match="SHA-256"):
-        normalize_indicator("d41d8cd98f00b204e9800998ecf8427e")
+def test_unsupported_hash_message_names_the_supported_algorithms() -> None:
+    with pytest.raises(InvalidIndicatorError, match=r"MD5, SHA-1 and SHA-256.*SHA-512"):
+        normalize_indicator("d" * 128)
 
 
 def test_scheme_less_url_gets_a_helpful_message() -> None:
     with pytest.raises(InvalidIndicatorError, match="http://"):
         normalize_indicator("example.com/login")
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "8.8.8.8",
+        "1.1.1.1",
+        "2606:4700:4700::1111",
+        "::ffff:8.8.8.8",
+    ],
+)
+def test_public_addresses_may_be_sent_to_providers(address: str) -> None:
+    assert is_public_address(address)
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "10.1.2.3",
+        "172.16.0.9",
+        "192.168.1.20",
+        "100.64.0.1",
+        "127.0.0.1",
+        "169.254.10.10",
+        "0.0.0.0",  # noqa: S104 - an address under test, not a bind address
+        "224.0.0.251",
+        "255.255.255.255",
+        "240.0.0.1",
+        "192.0.2.10",
+        "198.51.100.7",
+        "203.0.113.9",
+        "198.18.0.1",
+        "::1",
+        "::",
+        "fe80::1",
+        "fe80::1%eth0",
+        "fc00::1",
+        "fec0::1",
+        "ff02::1",
+        "2001:db8::1",
+        "64:ff9b::808:808",
+        "::ffff:10.0.0.1",
+        "not-an-address",
+        "",
+        "8.8.8",
+        "8.8.8.8/32",
+    ],
+)
+def test_non_public_addresses_and_non_addresses_are_never_sent_to_providers(
+    address: str,
+) -> None:
+    assert not is_public_address(address)
 
 
 def test_random_hostile_input_only_ever_raises_the_documented_error() -> None:

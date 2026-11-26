@@ -369,7 +369,10 @@ def test_a_stale_answer_still_counts_but_lowers_confidence_and_is_flagged() -> N
     assert stale.score == fresh.score
     assert fresh.confidence == 90
     assert stale.confidence == 15 + 35 + 20
-    assert has_note(stale, "AbuseIPDB's latest answer (2025-05-29) is older than its cache window")
+    assert has_note(
+        stale,
+        "AbuseIPDB's latest answer (29-05-2025 05:30:00 PM IST) is older than its cache window",
+    )
 
 
 def test_collector_notes_reach_the_uncertainty_list_verbatim() -> None:

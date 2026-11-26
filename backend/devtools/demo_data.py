@@ -6,7 +6,7 @@ The catalogue only contains values that cannot accuse a real host (tests enforce
   documentation, apart from a few household-name sites that are simulated as clean;
 * the malicious-looking IP addresses are IPv6 addresses from space IANA has not allocated; the
   only IPv4 addresses are well-known public resolvers, simulated as clean;
-* file hashes are SHA-256 digests of made-up strings.
+* file hashes (MD5, SHA-1 and SHA-256) are digests of made-up strings.
 """
 
 import hashlib
@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.timeutil import IST, ist_day_start, today_ist
 from app.models.enums import IndicatorType
 from app.models.types import utcnow
 from app.services.intel_service import IntelService, RequestContext
@@ -27,7 +28,7 @@ from app.services.normalization import InvalidIndicatorError
 from devtools.simulated_providers import Catalogue, Tier
 
 SEED = 42
-HISTORY_DAYS = 14  # the overview charts 14 UTC days
+HISTORY_DAYS = 14  # the overview charts 14 IST days
 
 _IPV6_TIERS = {
     Tier.CRITICAL: 6,
@@ -40,6 +41,7 @@ _IPV6_TIERS = {
 _DOMAIN_TIERS = {Tier.HIGH: 6, Tier.MEDIUM: 12, Tier.LOW: 9, Tier.UNKNOWN: 9}
 _URL_TIERS = {Tier.HIGH: 4, Tier.MEDIUM: 6, Tier.LOW: 4, Tier.UNKNOWN: 4}
 _HASH_TIERS = {Tier.HIGH: 5, Tier.MEDIUM: 8, Tier.LOW: 5, Tier.UNKNOWN: 6}
+_LEGACY_HASH_TIERS = {Tier.HIGH: 2, Tier.MEDIUM: 2, Tier.LOW: 1, Tier.UNKNOWN: 1}
 
 BENIGN_IPV4 = (
     "8.8.8.8",
@@ -95,10 +97,11 @@ ANALYSTS = (
 )
 REJECTED_INPUTS = ("192.168.1.10", "10.0.0.7", "router.local", "localhost")
 
-# Lookup volume: a working-hours bump, quieter weekends, a few bursts and a busy recent window.
+# Lookup volume: a working-hours bump (hours are IST), quieter weekends, a few bursts and a busy
+# recent window.
 BASE_RATE = 0.2
 PEAK_RATE = 1.3
-PEAK_HOUR = 13
+PEAK_HOUR = 14
 PEAK_SPREAD = 3.5
 WEEKEND_FACTOR = 0.5
 MIN_PER_DAY = 4
@@ -178,6 +181,14 @@ def build_catalogue() -> list[DemoIndicator]:
         sample = HASH_SAMPLE.format(number=next(sample_numbers))
         return hashlib.sha256(sample.encode()).hexdigest()
 
+    def sha1() -> str:
+        sample = HASH_SAMPLE.format(number=next(sample_numbers))
+        return hashlib.sha1(sample.encode(), usedforsecurity=False).hexdigest()
+
+    def md5() -> str:
+        sample = HASH_SAMPLE.format(number=next(sample_numbers))
+        return hashlib.md5(sample.encode(), usedforsecurity=False).hexdigest()
+
     entries = [DemoIndicator(IndicatorType.IPV4, ip, Tier.CLEAN) for ip in BENIGN_IPV4]
     entries += [DemoIndicator(IndicatorType.DOMAIN, name, Tier.CLEAN) for name in BENIGN_DOMAINS]
     entries += [DemoIndicator(IndicatorType.DOMAIN, name, Tier.UNKNOWN) for name in FAILURE_SAMPLES]
@@ -185,6 +196,8 @@ def build_catalogue() -> list[DemoIndicator]:
     entries += _generated(IndicatorType.DOMAIN, domain, rng, _DOMAIN_TIERS)
     entries += _generated(IndicatorType.URL, url, rng, _URL_TIERS)
     entries += _generated(IndicatorType.SHA256, sha256, rng, _HASH_TIERS)
+    entries += _generated(IndicatorType.SHA1, sha1, rng, _LEGACY_HASH_TIERS)
+    entries += _generated(IndicatorType.MD5, md5, rng, _LEGACY_HASH_TIERS)
     return entries
 
 
@@ -228,10 +241,8 @@ def _poisson(rng: random.Random, rate: float) -> int:
 
 
 def lookup_moments(rng: random.Random, now: datetime, minimum: int) -> list[datetime]:
-    """When lookups happen: oldest first, within the 14 UTC days the overview charts."""
-    start = (now - timedelta(days=HISTORY_DAYS - 1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    """When lookups happen: oldest first, within the 14 IST days the overview charts."""
+    start = ist_day_start(today_ist(now) - timedelta(days=HISTORY_DAYS - 1))
     end = now - timedelta(minutes=15)
     moments: list[datetime] = []
 
@@ -242,8 +253,11 @@ def lookup_moments(rng: random.Random, now: datetime, minimum: int) -> list[date
     elapsed_hours: list[datetime] = []
     while hour < end:
         elapsed_hours.append(hour)
-        rate = BASE_RATE + PEAK_RATE * math.exp(-0.5 * ((hour.hour - PEAK_HOUR) / PEAK_SPREAD) ** 2)
-        if hour.weekday() >= 5:
+        local = hour.astimezone(IST)
+        rate = BASE_RATE + PEAK_RATE * math.exp(
+            -0.5 * ((local.hour - PEAK_HOUR) / PEAK_SPREAD) ** 2
+        )
+        if local.weekday() >= 5:
             rate *= WEEKEND_FACTOR
         moments += [
             min(end, between(hour, hour + timedelta(hours=1))) for _ in range(_poisson(rng, rate))

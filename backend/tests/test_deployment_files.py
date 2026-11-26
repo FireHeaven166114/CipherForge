@@ -21,12 +21,26 @@ UVICORN_VARIABLES = {"FORWARDED_ALLOW_IPS"}
 # Not configurable from the environment, or assembled by Compose from the POSTGRES_* values.
 NOT_PASSED_THROUGH = {"APP_NAME", "APP_VERSION", "DATABASE_URL"}
 PROVIDER_KEYS = {"ABUSEIPDB_API_KEY", "OTX_API_KEY"}
+# Secrets that only the API process may receive; the one-shot migration job must not.
+BACKEND_ONLY_SECRETS = PROVIDER_KEYS | {
+    "VIRUSTOTAL_API_KEY",
+    "THREATFOX_API_KEY",
+    "CIPHERFORGE_MASTER_KEY",
+}
+# Fixed to the Compose volume, so it is deliberately not an overridable ${NAME:-default} entry.
+FIXED_IN_COMPOSE = {"ENCRYPTED_FILE_STORAGE_PATH"}
 # Their defaults (production, Entra) cannot start without real tenant values, so tests pin them.
 PINNED_FOR_TESTS = {"ENVIRONMENT", "AUTH_MODE"}
 PROVIDER_TUNING = (
     "abuseipdb_cache_ttl_seconds",
     "otx_cache_ttl_seconds",
+    "virustotal_cache_ttl_seconds",
+    "threatfox_cache_ttl_seconds",
     "provider_timeout_seconds",
+    "virustotal_timeout_seconds",
+    "threatfox_timeout_seconds",
+    "virustotal_max_retries",
+    "threatfox_max_retries",
     "investigate_rate_limit_per_minute",
 )
 
@@ -99,8 +113,19 @@ def test_compose_fallbacks_equal_the_setting_defaults(
 
 
 def test_provider_keys_are_not_given_to_the_migration_job(compose: dict[str, Any]) -> None:
-    assert not PROVIDER_KEYS & set(compose["services"]["migrate"]["environment"])
-    assert PROVIDER_KEYS.issubset(compose["services"]["backend"]["environment"])
+    assert not BACKEND_ONLY_SECRETS & set(compose["services"]["migrate"]["environment"])
+    assert BACKEND_ONLY_SECRETS.issubset(compose["services"]["backend"]["environment"])
+
+
+def test_encrypted_files_are_stored_on_a_named_volume(
+    compose: dict[str, Any], backend_environment: dict[str, str]
+) -> None:
+    backend = compose["services"]["backend"]
+    path = backend_environment["ENCRYPTED_FILE_STORAGE_PATH"]
+    assert not FIXED_IN_COMPOSE & set(fallbacks(backend_environment)), "path must stay fixed"
+    assert f"encrypted_files:{path}" in backend["volumes"]
+    assert "encrypted_files" in compose["volumes"]
+    assert backend["read_only"] is True, "the root file system must stay read-only"
 
 
 def test_forwarded_headers_are_trusted_only_from_private_networks_by_default(
@@ -126,5 +151,22 @@ def test_env_example_is_a_valid_keyless_configuration() -> None:
 
     assert settings.abuseipdb_api_key is None
     assert settings.otx_api_key is None
+    assert settings.virustotal_api_key is None
+    assert settings.threatfox_api_key is None
+    assert settings.cipherforge_master_key is None
     for name in PROVIDER_TUNING:
         assert getattr(settings, name) == Settings.model_fields[name].default, name
+
+
+def test_env_example_matches_every_setting_default() -> None:
+    """The template documents the shipped defaults, so a drifting value is a documentation bug."""
+    templated = Settings(_env_file=ENV_EXAMPLE_PATH)
+    reference = Settings(
+        _env_file=None,
+        environment="development",
+        auth_mode="dev",
+        log_format="console",
+        database_url=templated.database_url,
+    )
+    for name in Settings.model_fields:
+        assert getattr(templated, name) == getattr(reference, name), name

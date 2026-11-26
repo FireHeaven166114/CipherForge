@@ -1,12 +1,12 @@
-"""AlienVault OTX adapter (IPs, domains, URLs and SHA-256 file hashes).
+"""AlienVault OTX adapter (IPs, domains, URLs and MD5, SHA-1 and SHA-256 file hashes).
 
 Uses ``GET /api/v1/indicators/{type}/{value}/general`` and reads only the ``pulse_info`` and
 ``validation`` sections. A *pulse* is a community-submitted threat report, so the number of
 pulses is a weak-to-moderate signal and every pulse title is untrusted text.
 
-The response field names used here come from OTX's public examples and SDK; they have not been
-exercised against the live service (no API key was available while building), so parsing is
-defensive: an unexpected shape becomes a provider error, never a crash or a guess.
+The response field names used here come from OTX's public examples and SDK, and a live lookup
+has returned them. Parsing is still defensive: an unexpected shape becomes a provider error,
+never a crash or a guess.
 """
 
 import re
@@ -16,7 +16,13 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar
 from urllib.parse import quote
 
-from app.collectors.base import Collector, ProviderFailure, ProviderResult, ProviderStatus
+from app.collectors.base import (
+    Collector,
+    ProviderFailure,
+    ProviderResult,
+    ProviderStatus,
+    Reason,
+)
 from app.collectors.sanitize import bounded_int, clean_text, isoformat, parse_timestamp
 from app.models.enums import IndicatorType
 from app.services.normalization import NormalizedIndicator
@@ -32,11 +38,18 @@ _ATTACK_ID = re.compile(r"T\d{4}(?:\.\d{3})?")
 _PULSE_ID = re.compile(r"[0-9a-fA-F]{24}")
 _OLDEST = datetime.min.replace(tzinfo=UTC)
 
+
+def _bad_shape() -> ProviderFailure:
+    return ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE, Reason.MALFORMED_RESPONSE)
+
+
 _SECTION_BY_TYPE = {
     IndicatorType.IPV4: "IPv4",
     IndicatorType.IPV6: "IPv6",
     IndicatorType.DOMAIN: "domain",
     IndicatorType.URL: "url",
+    IndicatorType.MD5: "file",
+    IndicatorType.SHA1: "file",
     IndicatorType.SHA256: "file",
 }
 
@@ -75,13 +88,13 @@ def pulse_signal(pulse_count: int) -> float:
 
 def parse_otx(payload: Any) -> ProviderResult:
     if not isinstance(payload, dict):
-        raise ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE)
+        raise _bad_shape()
     pulse_info = payload.get("pulse_info")
     if not isinstance(pulse_info, dict):
-        raise ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE)
+        raise _bad_shape()
     raw_pulses = pulse_info.get("pulses", [])
     if not isinstance(raw_pulses, list):
-        raise ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE)
+        raise _bad_shape()
 
     pulses = [pulse for pulse in raw_pulses[:MAX_PULSES] if isinstance(pulse, dict)]
     pulse_count = max(bounded_int(pulse_info.get("count"), 0, _MAX_COUNT) or 0, len(pulses))

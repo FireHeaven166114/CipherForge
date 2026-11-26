@@ -20,6 +20,12 @@ COPY --chown=cipherforge:cipherforge alembic.ini ./
 COPY --chown=cipherforge:cipherforge alembic ./alembic
 COPY --chown=cipherforge:cipherforge app ./app
 
+# Encrypted shared files live here. docker-compose.yml mounts a named volume on this path; creating
+# it first with the right owner lets the unprivileged user write to the volume.
+RUN mkdir -p /app/data/encrypted-files \
+ && chown -R cipherforge:cipherforge /app/data \
+ && chmod 700 /app/data/encrypted-files
+
 USER cipherforge
 EXPOSE 8000
 

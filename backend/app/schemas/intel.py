@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.collectors.base import Reason, Verdict
 from app.correlation.scoring import Classification
 from app.models.enums import IndicatorStatus, IndicatorType
 from app.services.normalization import MAX_INDICATOR_LENGTH
@@ -83,6 +84,13 @@ class ProviderView(BaseModel):
     summary: dict[str, Any]
     tags: list[str]
     message: str | None
+    # What the provider itself concluded about the indicator (VirusTotal, ThreatFox), when its
+    # answer says so. It labels that provider's data: it is not a CipherForge verdict, and
+    # "harmless" or "not_found" never means the indicator is safe.
+    verdict: Verdict | None = None
+    # Why this lookup produced no answer (missing key, rejected key, rate limit, timeout, ...).
+    # None when the provider answered, or when it was not asked because it cannot handle the type.
+    reason: Reason | None = None
 
 
 class ScoreFactorOut(BaseModel):
@@ -188,7 +196,7 @@ class DayPoint(BaseModel):
 
 class ActivityRow(BaseModel):
     day: date
-    # Completed lookups per UTC hour of the day (24 entries).
+    # Completed lookups per Indian Standard Time hour of the day (24 entries).
     hours: list[int]
 
 

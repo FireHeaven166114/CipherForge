@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 from collections.abc import Callable, Iterator
@@ -25,7 +26,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
-from app.core.logging_config import clear_registered_secrets
+from app.core.logging_config import clear_registered_secrets, configure_logging
 from app.main import create_app
 from app.security.auth import EntraTokenValidator
 
@@ -34,24 +35,7 @@ TENANT_ID = "11111111-2222-3333-4444-555555555555"
 CLIENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 ISSUER = f"https://login.microsoftonline.com/{TENANT_ID}/v2.0"
 
-_ENV_VARS = (
-    "ENVIRONMENT",
-    "LOG_LEVEL",
-    "LOG_FORMAT",
-    "DATABASE_URL",
-    "AUTH_MODE",
-    "DEV_AUTH_ROLES",
-    "ENTRA_TENANT_ID",
-    "ENTRA_CLIENT_ID",
-    "ENTRA_AUDIENCE",
-    "CORS_ORIGINS",
-    "ABUSEIPDB_API_KEY",
-    "OTX_API_KEY",
-    "ABUSEIPDB_CACHE_TTL_SECONDS",
-    "OTX_CACHE_TTL_SECONDS",
-    "PROVIDER_TIMEOUT_SECONDS",
-    "INVESTIGATE_RATE_LIMIT_PER_MINUTE",
-)
+_ENV_VARS = tuple(sorted({name.upper() for name in Settings.model_fields}))
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +66,17 @@ def make_settings(tmp_path: Any) -> Callable[..., Settings]:
 def client(make_settings: Callable[..., Settings]) -> Iterator[TestClient]:
     with TestClient(create_app(make_settings())) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def production_logging(
+    make_settings: Callable[..., Settings], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Apply the application's real logging policy, then capture whatever it lets through."""
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
+        logging.getLogger(name).setLevel(logging.NOTSET)
+    configure_logging(make_settings())
+    caplog.set_level(logging.DEBUG)
 
 
 # --- Migrated database --------------------------------------------------------

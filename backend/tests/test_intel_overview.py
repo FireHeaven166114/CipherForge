@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.collectors.base import Collector
 from app.core.config import Settings
+from app.core.timeutil import IST
 from app.correlation.scoring import Classification
 from app.database.session import build_engine, build_session_factory
 from app.models.audit import AuditLog
@@ -171,7 +172,15 @@ def test_the_overview_counts_bands_attributes_and_rankings(
     assert result.kpis.total_indicators == 6
     assert result.kpis.not_assessed_indicators == 1
     assert result.kpis.high_risk_indicators == bands["high"] + bands["critical"]
-    assert result.by_type == {"ipv4": 3, "ipv6": 0, "domain": 3, "url": 0, "sha256": 0}
+    assert result.by_type == {
+        "ipv4": 3,
+        "ipv6": 0,
+        "domain": 3,
+        "url": 0,
+        "md5": 0,
+        "sha1": 0,
+        "sha256": 0,
+    }
     domains = next(row for row in result.matrix if row.indicator_type is IndicatorType.DOMAIN)
     assert domains.counts["not_assessed"] == 1
     assert sum(domains.counts.values()) == 3
@@ -230,7 +239,7 @@ def test_every_overview_count_equals_the_total_of_the_list_it_leads_to(
             )
 
 
-def test_lookups_are_bucketed_by_utc_day_and_compared_with_the_previous_24_hours(
+def test_lookups_are_bucketed_by_ist_day_and_compared_with_the_previous_24_hours(
     session: Session, clock: Clock, build_service: ServiceFactory
 ) -> None:
     service = build_service(FakeAbuse(), FakeOtx())
@@ -248,11 +257,33 @@ def test_lookups_are_bucketed_by_utc_day_and_compared_with_the_previous_24_hours
     assert result.kpis.new_indicators_24h == 1
     assert result.kpis.new_indicators_prev_24h == 1
     per_day = {point.day: point.lookups for point in result.series if point.lookups}
-    assert per_day == dict(Counter(moment.astimezone(UTC).date() for moment in moments))
+    assert per_day == dict(Counter(moment.astimezone(IST).date() for moment in moments))
     cells = {row.day: row.hours for row in result.activity}
-    recent = moments[1].astimezone(UTC)
+    recent = moments[1].astimezone(IST)
     assert cells[recent.date()][recent.hour] >= 1
     assert sum(sum(row.hours) for row in result.activity) == 3
+
+
+def test_a_lookup_just_after_midnight_in_india_belongs_to_the_next_ist_day(
+    session: Session, clock: Clock, build_service: ServiceFactory
+) -> None:
+    service = build_service(FakeAbuse(), FakeOtx())
+    # 18:00 UTC is 23:30 IST on 10 June; 19:00 UTC is 00:30 IST on 11 June.
+    before_midnight = datetime(2025, 6, 10, 18, 0, tzinfo=UTC)
+    after_midnight = datetime(2025, 6, 10, 19, 0, tzinfo=UTC)
+    for moment, value in ((before_midnight, IP_A), (after_midnight, IP_B)):
+        clock.now = moment
+        service.investigate(session, CONTEXT, value)
+    clock.now = datetime(2025, 6, 11, 10, 0, tzinfo=UTC)
+
+    result = service.overview(session)
+
+    per_day = {point.day.isoformat(): point.lookups for point in result.series if point.lookups}
+    assert per_day == {"2025-06-10": 1, "2025-06-11": 1}
+    cells = {row.day.isoformat(): row.hours for row in result.activity}
+    assert cells["2025-06-10"][23] == 1
+    assert cells["2025-06-11"][0] == 1
+    assert result.series[-1].day.isoformat() == "2025-06-11"
 
 
 def test_rejected_inputs_and_old_lookups_are_not_counted(

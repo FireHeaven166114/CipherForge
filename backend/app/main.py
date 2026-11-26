@@ -9,11 +9,12 @@ of side effects, so tests can build an app with explicit settings.
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.health import router as health_router
 from app.api.v1.router import api_router
@@ -28,11 +29,21 @@ from app.core.middleware import (
     UnhandledExceptionMiddleware,
 )
 from app.database.session import build_engine, build_session_factory
+from app.files.service import FileService
+from app.network.service import NetworkService
 from app.security.auth import EntraTokenValidator
 from app.security.rate_limit import SlidingWindowRateLimiter
 from app.services.intel_service import IntelService
 
 logger = logging.getLogger("cipherforge.app")
+
+NetworkServiceFactory = Callable[[Settings, sessionmaker[Session], IntelService], NetworkService]
+
+
+def _default_network_service(
+    settings: Settings, session_factory: sessionmaker[Session], intel_service: IntelService
+) -> NetworkService:
+    return NetworkService(settings, session_factory, intel_service=intel_service)
 
 
 def build_intel_service(settings: Settings) -> IntelService:
@@ -49,7 +60,13 @@ def create_app(
     *,
     token_validator: EntraTokenValidator | None = None,
     intel_service: IntelService | None = None,
+    network_service_factory: NetworkServiceFactory | None = None,
 ) -> FastAPI:
+    """Build the application.
+
+    ``network_service_factory`` lets the demo server and the tests give the network module a
+    simulated interface catalogue and packet source; production never passes it.
+    """
     settings = settings or get_settings()
     configure_logging(settings)
 
@@ -58,6 +75,9 @@ def create_app(
         token_validator = EntraTokenValidator.from_settings(settings)
     if intel_service is None:
         intel_service = build_intel_service(settings)
+    session_factory = build_session_factory(engine)
+    build_network_service = network_service_factory or _default_network_service
+    network_service = build_network_service(settings, session_factory, intel_service)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -69,7 +89,10 @@ def create_app(
                 "auth_mode": settings.auth_mode,
             },
         )
+        network_service.startup()
         yield
+        # Before the providers close: a capture still running makes its last lookups on them.
+        network_service.shutdown()
         intel_service.close()
         engine.dispose()
         logger.info("shutdown")
@@ -86,10 +109,12 @@ def create_app(
     )
     app.state.settings = settings
     app.state.engine = engine
-    app.state.session_factory = build_session_factory(engine)
+    app.state.session_factory = session_factory
     app.state.token_validator = token_validator
     app.state.intel_service = intel_service
     app.state.rate_limiter = SlidingWindowRateLimiter(settings.investigate_rate_limit_per_minute)
+    app.state.file_service = FileService(settings)
+    app.state.network_service = network_service
 
     register_exception_handlers(app)
 
@@ -100,7 +125,7 @@ def create_app(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
+            allow_headers=["Authorization", "Content-Type", "X-Correlation-ID", "X-File-Name"],
             expose_headers=["X-Correlation-ID"],
             allow_credentials=False,
         )

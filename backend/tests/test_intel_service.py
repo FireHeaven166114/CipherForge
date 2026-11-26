@@ -581,7 +581,7 @@ def test_a_provider_that_breaks_its_contract_is_contained(
         "10.0.0.1",
         "' OR 1=1 --",
         "<script>alert(1)</script>",
-        "d41d8cd98f00b204e9800998ecf8427e",
+        "d" * 128,  # SHA-512 is the one hash length that stays unsupported
         "ftp://example.com/payload",
     ],
 )
@@ -1009,7 +1009,15 @@ def test_statistics_cover_every_bucket_and_only_recent_completed_lookups(
 
     assert stats.lookups_last_24h == 2
     assert stats.total_indicators == 2
-    assert stats.by_type == {"ipv4": 2, "ipv6": 0, "domain": 0, "url": 0, "sha256": 0}
+    assert stats.by_type == {
+        "ipv4": 2,
+        "ipv6": 0,
+        "domain": 0,
+        "url": 0,
+        "md5": 0,
+        "sha1": 0,
+        "sha256": 0,
+    }
     assert stats.by_classification == {
         "informational": 1,
         "low": 0,

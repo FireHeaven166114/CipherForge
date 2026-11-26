@@ -28,12 +28,28 @@ _ERROR_CODES = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    410: "gone",
     413: "payload_too_large",
+    415: "unsupported_media_type",
     422: "validation_error",
     429: "rate_limited",
     500: "internal_error",
     503: "service_unavailable",
 }
+
+
+class ApiError(StarletteHTTPException):
+    """An HTTP error that carries its own stable ``code`` for clients to branch on.
+
+    Use it where the status alone is ambiguous (for example 410 for an expired link versus a
+    revoked one). The message must be safe to show: no input echoed back, no paths, no secrets.
+    """
+
+    def __init__(
+        self, status_code: int, code: str, message: str, *, headers: dict[str, str] | None = None
+    ) -> None:
+        super().__init__(status_code=status_code, detail=message, headers=headers)
+        self.code = code
 
 
 def error_response(
@@ -55,7 +71,7 @@ def error_response(
 
 
 async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-    code = _ERROR_CODES.get(exc.status_code, "http_error")
+    code = getattr(exc, "code", None) or _ERROR_CODES.get(exc.status_code, "http_error")
     message = exc.detail if isinstance(exc.detail, str) else http.HTTPStatus(exc.status_code).phrase
     return error_response(exc.status_code, code, message, headers=exc.headers)
 

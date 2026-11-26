@@ -2,6 +2,8 @@
 
 Everything here is read-only and computed from stored data: the indicators, the latest answer
 each provider gave for each indicator, and the lookup audit trail. Nothing calls a provider.
+Days and hours are Indian Standard Time (Asia/Kolkata) calendar days and hours; the stored
+timestamps stay UTC and are converted only to decide which bucket they belong to.
 
 The attribute breakdowns (countries, malware families, techniques, tags) are computed in Python
 from JSON that providers supplied, because JSON querying differs between PostgreSQL and SQLite.
@@ -13,12 +15,13 @@ import re
 import uuid
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from datetime import UTC, datetime, time, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.timeutil import IST, ist_day_start, today_ist
 from app.correlation.scoring import Classification, classify
 from app.models.audit import AuditLog
 from app.models.enums import IndicatorType, ObservationStatus
@@ -65,9 +68,9 @@ def build_overview(
     providers: Sequence[ProviderInfo],
     indicator_out: IndicatorOutBuilder,
 ) -> OverviewResponse:
-    today = now.astimezone(UTC).date()
+    today = today_ist(now)
     days = [today - timedelta(days=offset) for offset in range(SERIES_DAYS - 1, -1, -1)]
-    since = datetime.combine(days[0], time.min, tzinfo=UTC)
+    since = ist_day_start(days[0])
 
     matrix, by_type = _matrix(session)
     by_classification = {
@@ -84,12 +87,13 @@ def build_overview(
     high_risk_per_day: Counter[Any] = Counter()
     hourly: Counter[tuple[Any, int]] = Counter()
     for at, high_risk in lookups:
-        day = at.astimezone(UTC).date()
+        local = at.astimezone(IST)
+        day = local.date()
         lookups_per_day[day] += 1
-        hourly[(day, at.astimezone(UTC).hour)] += 1
+        hourly[(day, local.hour)] += 1
         if high_risk:
             high_risk_per_day[day] += 1
-    new_per_day = Counter(created_at.astimezone(UTC).date() for created_at in created)
+    new_per_day = Counter(created_at.astimezone(IST).date() for created_at in created)
 
     series = [
         DayPoint(

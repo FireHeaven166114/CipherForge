@@ -1,6 +1,7 @@
 """Column types shared by the ORM models."""
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import JSON, DateTime
@@ -14,6 +15,12 @@ JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def in_list(column: str, values: type[StrEnum]) -> str:
+    """A CHECK condition that ``column`` holds one of the enum's values."""
+    quoted = ", ".join(f"'{member.value}'" for member in values)
+    return f"{column} IN ({quoted})"
 
 
 class UTCDateTime(TypeDecorator[datetime]):

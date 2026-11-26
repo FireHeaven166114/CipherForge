@@ -123,6 +123,17 @@ class FakeOtx(FakeCollector):
     display_name = "AlienVault OTX"
 
 
+class FakeVirusTotal(FakeCollector):
+    name = "virustotal"
+    display_name = "VirusTotal"
+
+
+class FakeThreatFox(FakeCollector):
+    name = "threatfox"
+    display_name = "ThreatFox"
+    supported_types = frozenset(IndicatorType) - {IndicatorType.SHA1}
+
+
 class ExplodingCollector(FakeOtx):
     """A provider whose lookup breaks the 'never raises' contract."""
 

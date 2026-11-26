@@ -9,7 +9,6 @@
 
 import uuid
 from datetime import datetime
-from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
@@ -26,12 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.enums import IndicatorStatus, IndicatorType, ObservationStatus
-from app.models.types import JSONType, UTCDateTime, utcnow
-
-
-def _in_list(column: str, values: type[StrEnum]) -> str:
-    quoted = ", ".join(f"'{member.value}'" for member in values)
-    return f"{column} IN ({quoted})"
+from app.models.types import JSONType, UTCDateTime, in_list, utcnow
 
 
 class ThreatSource(Base):
@@ -49,8 +43,8 @@ class ThreatIndicator(Base):
         UniqueConstraint(
             "indicator_type", "indicator_value", name="uq_threat_indicators_type_value"
         ),
-        CheckConstraint(_in_list("indicator_type", IndicatorType), name="indicator_type"),
-        CheckConstraint(_in_list("status", IndicatorStatus), name="status"),
+        CheckConstraint(in_list("indicator_type", IndicatorType), name="indicator_type"),
+        CheckConstraint(in_list("status", IndicatorStatus), name="status"),
         CheckConstraint("risk_score >= 0 AND risk_score <= 100", name="risk_score_range"),
         CheckConstraint("confidence >= 0 AND confidence <= 100", name="confidence_range"),
         CheckConstraint("source_count >= 0", name="source_count_non_negative"),
@@ -90,7 +84,7 @@ class ThreatObservation(Base):
 
     __tablename__ = "threat_observations"
     __table_args__ = (
-        CheckConstraint(_in_list("status", ObservationStatus), name="status"),
+        CheckConstraint(in_list("status", ObservationStatus), name="status"),
         CheckConstraint("signal >= 0 AND signal <= 1", name="signal_range"),
         Index("ix_threat_observations_lookup", "indicator_id", "source_id", "fetched_at"),
     )

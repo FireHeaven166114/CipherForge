@@ -22,9 +22,11 @@ MAX_INDICATOR_LENGTH = 2048
 MAX_DOMAIN_LENGTH = 253
 _MAX_PORT = 65535
 
+_MD5 = re.compile(r"[0-9a-fA-F]{32}")
+_SHA1 = re.compile(r"[0-9a-fA-F]{40}")
 _SHA256 = re.compile(r"[0-9a-fA-F]{64}")
 _HEX = re.compile(r"[0-9a-fA-F]+")
-_UNSUPPORTED_HASH_LENGTHS = frozenset({32, 40, 128})  # MD5, SHA-1, SHA-512
+_UNSUPPORTED_HASH_LENGTHS = frozenset({128})  # SHA-512
 _IPV4_LIKE = re.compile(r"[0-9.]+")
 _ASCII_LABEL = re.compile(r"(?!-)[a-z0-9_-]{1,63}(?<!-)")
 _TLD = re.compile(r"[a-z]{2,63}|xn--[a-z0-9-]{1,59}")
@@ -89,9 +91,13 @@ def normalize_indicator(raw: str) -> NormalizedIndicator:
 
     if _SHA256.fullmatch(text):
         return NormalizedIndicator(IndicatorType.SHA256, text.lower())
+    if _SHA1.fullmatch(text):
+        return NormalizedIndicator(IndicatorType.SHA1, text.lower())
+    if _MD5.fullmatch(text):
+        return NormalizedIndicator(IndicatorType.MD5, text.lower())
     if len(text) in _UNSUPPORTED_HASH_LENGTHS and _HEX.fullmatch(text):
         raise InvalidIndicatorError(
-            "Only SHA-256 file hashes are supported; MD5, SHA-1 and SHA-512 are not."
+            "Only MD5, SHA-1 and SHA-256 file hashes are supported; SHA-512 is not."
         )
     if "://" in text:
         return _normalize_url(text)
@@ -131,7 +137,7 @@ def _parse_public_ip(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address
         raise InvalidIndicatorError("Not a valid IPv4 or IPv6 address.") from None
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
-    if not _is_public(address):
+    if not is_public_address(address):
         raise InvalidIndicatorError(
             "Private, loopback, link-local, multicast, reserved and other non-public "
             "addresses are not looked up."
@@ -139,7 +145,20 @@ def _parse_public_ip(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address
     return address
 
 
-def _is_public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+def is_public_address(address: str | ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Whether an address is routable on the public internet, so a provider can know it.
+
+    Private, loopback, link-local, multicast, reserved, unspecified and documentation ranges are
+    all refused, and so is text that is not an IP address. An IPv4-mapped IPv6 address is judged
+    as the IPv4 address it wraps.
+    """
+    if isinstance(address, str):
+        try:
+            address = ipaddress.ip_address(address)
+        except ValueError:
+            return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
     # ``is_global`` alone still admits multicast, NAT64 and deprecated site-local space.
     if not address.is_global or address.is_multicast or address.is_reserved:
         return False

@@ -1,15 +1,24 @@
-"""Simulated AbuseIPDB and AlienVault OTX services for the demo.
+"""Simulated AbuseIPDB, AlienVault OTX, VirusTotal and ThreatFox services for the demo.
 
 The real adapters run unchanged (request building, parsing, sanitising, scoring). Only the
 network is replaced by an in-process ``httpx2.MockTransport`` that answers in each provider's
 documented response shape. Every answer is synthetic and derived deterministically from the
 indicator, and every adapter reports ``simulated = True`` so the dashboard labels the data.
 
-Two marker words force failures, so error handling can be demonstrated and tested: a value that
+Simulated records carry no identifiers or links that would point at a real provider page: a
+reader following one would find nothing that confirms the data.
+
+Marker words force failures, so error handling can be demonstrated and tested: a value that
 contains ``rate-limit`` is answered with HTTP 429 and one that contains ``provider-error`` with
-HTTP 500.
+HTTP 500, by every provider that takes the value. A value that contains ``otx-down``,
+``virustotal-down`` or ``threatfox-down`` makes only that provider answer with HTTP 500, and the
+others then describe it as a heavily reported indicator, so one failure can be shown next to
+answers that still arrive.
 """
 
+import base64
+import ipaddress
+import json
 import random
 import re
 from collections.abc import Callable, Mapping
@@ -24,11 +33,19 @@ import httpx2
 from app.collectors.abuseipdb import AbuseIPDBCollector
 from app.collectors.base import Collector
 from app.collectors.otx import OTXCollector
+from app.collectors.threatfox import ThreatFoxCollector
+from app.collectors.virustotal import VirusTotalCollector
 from app.models.enums import IndicatorType
 from app.models.types import utcnow
 
 DEMO_API_KEY = "simulated-demo-key"
 FAILURE_MARKERS = (("rate-limit", 429), ("provider-error", 500))
+# AbuseIPDB takes only addresses, which cannot carry a marker word, so it has none.
+PROVIDER_DOWN_MARKERS = {
+    "otx": "otx-down",
+    "virustotal": "virustotal-down",
+    "threatfox": "threatfox-down",
+}
 MAX_LISTED_PULSES = 12
 
 _ABUSEIPDB_HOST = "api.abuseipdb.com"
@@ -39,7 +56,18 @@ _OTX_SECTIONS = {
     "IPv6": IndicatorType.IPV6,
     "domain": IndicatorType.DOMAIN,
     "url": IndicatorType.URL,
-    "file": IndicatorType.SHA256,
+}
+_VIRUSTOTAL_HOST = "www.virustotal.com"
+_VIRUSTOTAL_PATH = re.compile(
+    r"/api/v3/(?P<collection>ip_addresses|domains|urls|files)/(?P<identifier>[^/]+)"
+)
+_THREATFOX_HOST = "threatfox-api.abuse.ch"
+_THREATFOX_PATH = "/api/v1/"
+# OTX has one "file" section for every hash algorithm, so the digest length tells them apart.
+_HASH_TYPE_BY_LENGTH = {
+    32: IndicatorType.MD5,
+    40: IndicatorType.SHA1,
+    64: IndicatorType.SHA256,
 }
 _IP_TYPES = (IndicatorType.IPV4, IndicatorType.IPV6)
 
@@ -68,28 +96,28 @@ class AbuseShape:
 _NONE = AbuseShape((0, 0), (0, 0), (0, 0), (0, 0))
 _ABUSE_SHAPES: dict[Tier, AbuseShape] = {
     Tier.CRITICAL: AbuseShape((85, 100), (150, 900), (45, 220), (1, 20)),
-    Tier.HIGH: AbuseShape((50, 75), (30, 140), (12, 45), (3, 60)),
-    Tier.MEDIUM: AbuseShape((28, 52), (8, 30), (4, 14), (24, 200)),
-    Tier.LOW: AbuseShape((12, 38), (3, 9), (2, 6), (120, 600)),
+    Tier.HIGH: AbuseShape((32, 48), (30, 140), (12, 45), (3, 60)),
+    Tier.MEDIUM: AbuseShape((20, 38), (8, 30), (4, 14), (24, 200)),
+    Tier.LOW: AbuseShape((6, 18), (3, 9), (2, 6), (120, 600)),
     Tier.CLEAN: _NONE,
     Tier.UNKNOWN: _NONE,
 }
 
-# Pulses OTX holds, per tier. Only two providers exist, so an indicator that is not an IP
-# address can never be corroborated: its pulse counts stay modest and its score tops out.
+# Pulses OTX holds, per tier. An address is also judged by AbuseIPDB, so its pulse counts stay
+# lower than those of the indicators OTX is the main source for.
 _IP_PULSES: dict[Tier, Range] = {
     Tier.CRITICAL: (8, 45),
-    Tier.HIGH: (3, 8),
-    Tier.MEDIUM: (2, 4),
+    Tier.HIGH: (2, 3),
+    Tier.MEDIUM: (1, 3),
     Tier.LOW: (2, 3),
     Tier.CLEAN: (0, 0),
     Tier.UNKNOWN: (0, 0),
 }
 _OTHER_PULSES: dict[Tier, Range] = {
     Tier.CRITICAL: (26, 55),
-    Tier.HIGH: (25, 55),
-    Tier.MEDIUM: (4, 9),
-    Tier.LOW: (3, 4),
+    Tier.HIGH: (3, 4),
+    Tier.MEDIUM: (2, 4),
+    Tier.LOW: (2, 4),
     Tier.CLEAN: (0, 0),
     Tier.UNKNOWN: (0, 0),
 }
@@ -97,10 +125,62 @@ _OTHER_PULSES: dict[Tier, Range] = {
 _PULSE_AGE_DAYS: dict[Tier, tuple[float, float]] = {
     Tier.CRITICAL: (1, 40),
     Tier.HIGH: (2, 60),
-    Tier.MEDIUM: (6, 120),
-    Tier.LOW: (12, 300),
+    Tier.MEDIUM: (9, 120),
+    Tier.LOW: (45, 300),
     Tier.CLEAN: (0, 0),
     Tier.UNKNOWN: (0, 0),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class EngineShape:
+    """What VirusTotal's engines concluded about an indicator, and how stale the analysis is."""
+
+    malicious: Range
+    suspicious: Range
+    analysed_hours_ago: Range
+    reputation: Range
+    submissions: Range
+
+
+_VIRUSTOTAL_QUIET = EngineShape((0, 0), (0, 0), (6, 96), (0, 120), (30, 4000))
+_VIRUSTOTAL_SHAPES: dict[Tier, EngineShape] = {
+    Tier.CRITICAL: EngineShape((24, 58), (0, 5), (1, 30), (-120, -40), (40, 400)),
+    Tier.HIGH: EngineShape((2, 3), (0, 1), (2, 80), (-60, -10), (12, 120)),
+    Tier.MEDIUM: EngineShape((1, 2), (0, 1), (12, 240), (-15, 0), (3, 30)),
+    Tier.LOW: EngineShape((1, 1), (0, 1), (72, 600), (-4, 5), (1, 6)),
+    Tier.CLEAN: _VIRUSTOTAL_QUIET,
+    Tier.UNKNOWN: _VIRUSTOTAL_QUIET,  # never used: VirusTotal has no record of these
+}
+# Addresses are also judged by AbuseIPDB. A third and fourth source agreeing pushes a score up
+# fast, so the engine counts for them stay lower to keep the demo's tiers apart.
+_VIRUSTOTAL_IP_SHAPES: dict[Tier, EngineShape] = {
+    **_VIRUSTOTAL_SHAPES,
+    Tier.HIGH: EngineShape((1, 2), (0, 1), (2, 80), (-60, -10), (12, 120)),
+    Tier.MEDIUM: EngineShape((1, 1), (0, 1), (12, 240), (-15, 0), (3, 30)),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class FoxShape:
+    """What ThreatFox holds: whether it knows the indicator at all, and what it says."""
+
+    coverage: float
+    records: Range
+    confidence: Range
+    first_seen_days: Range
+
+
+_THREATFOX_QUIET = FoxShape(0.0, (0, 0), (0, 0), (0, 0))
+# ThreatFox only lists malware infrastructure and drops IOCs after six months, so it knows few
+# of the indicators the other providers hold records about.
+_THREATFOX_SHAPES: dict[Tier, FoxShape] = {
+    Tier.CRITICAL: FoxShape(1.0, (1, 3), (90, 100), (2, 30)),
+    Tier.HIGH: FoxShape(0.25, (1, 2), (60, 85), (3, 60)),
+    Tier.MEDIUM: FoxShape(0.15, (1, 1), (40, 60), (10, 120)),
+    Tier.LOW: FoxShape(0.06, (1, 1), (20, 40), (30, 150)),
+    Tier.CLEAN: _THREATFOX_QUIET,
+    Tier.UNKNOWN: _THREATFOX_QUIET,
 }
 
 _FALLBACK_WEIGHTS: dict[bool, tuple[tuple[Tier, int], ...]] = {
@@ -226,6 +306,8 @@ _THEMES_BY_TYPE: dict[IndicatorType, tuple[str, ...]] = {
     IndicatorType.IPV6: ("scanner", "botnet", "c2", "ransomware"),
     IndicatorType.DOMAIN: ("phishing", "c2", "stealer", "botnet"),
     IndicatorType.URL: ("phishing", "stealer", "botnet"),
+    IndicatorType.MD5: ("ransomware", "stealer", "botnet", "c2"),
+    IndicatorType.SHA1: ("ransomware", "stealer", "botnet", "c2"),
     IndicatorType.SHA256: ("ransomware", "stealer", "botnet", "c2"),
 }
 
@@ -270,7 +352,11 @@ class World:
 
     def tier(self, indicator_type: IndicatorType, value: str) -> Tier:
         listed = self.tiers.get((indicator_type, value))
-        return listed if listed is not None else fallback_tier(indicator_type, value)
+        if listed is not None:
+            return listed
+        if _names_a_provider_down(value):
+            return Tier.CRITICAL
+        return fallback_tier(indicator_type, value)
 
 
 def fallback_tier(indicator_type: IndicatorType, value: str) -> Tier:
@@ -381,12 +467,279 @@ def _pulse(
     }
 
 
-def _forced_failure(value: str) -> httpx2.Response | None:
+def _names_a_provider_down(value: str) -> bool:
     lowered = value.lower()
+    return any(marker in lowered for marker in PROVIDER_DOWN_MARKERS.values())
+
+
+def _forced_failure(value: str, provider: str) -> httpx2.Response | None:
+    lowered = value.lower()
+    marker = PROVIDER_DOWN_MARKERS.get(provider)
+    if marker is not None and marker in lowered:
+        return httpx2.Response(500, json={"detail": "simulated failure"})
     for marker, status in FAILURE_MARKERS:
         if marker in lowered:
             return httpx2.Response(status, json={"detail": "simulated failure"})
     return None
+
+
+# --- VirusTotal --------------------------------------------------------------------------
+
+_FILE_TYPES = (IndicatorType.MD5, IndicatorType.SHA1, IndicatorType.SHA256)
+_VIRUSTOTAL_TYPES = {
+    IndicatorType.IPV4: "ip_address",
+    IndicatorType.IPV6: "ip_address",
+    IndicatorType.DOMAIN: "domain",
+    IndicatorType.URL: "url",
+    IndicatorType.MD5: "file",
+    IndicatorType.SHA1: "file",
+    IndicatorType.SHA256: "file",
+}
+_FILE_KINDS = (
+    ("Win32 EXE", "exe"),
+    ("Win32 DLL", "dll"),
+    ("PowerShell", "ps1"),
+    ("Office Open XML Document", "docm"),
+    ("ELF", "elf"),
+)
+# Fictional category providers, so no real vendor is credited with a made-up verdict.
+_CATEGORY_SOURCES = ("Acme Shield", "Globex Guard", "Initech Scan", "Hooli Defender")
+_BAD_CATEGORIES = ("phishing", "malware", "malicious sites", "command and control")
+_GOOD_CATEGORIES = ("technology", "search engines", "software downloads", "business")
+# 64496-64511 is the range IANA reserves for documentation, so no real network is named.
+_DOCUMENTATION_ASNS: Range = (64496, 64511)
+
+
+def virustotal_payload(
+    world: World, indicator_type: IndicatorType, value: str
+) -> dict[str, Any] | None:
+    """The record VirusTotal would return, or ``None`` when it has never seen the indicator."""
+    tier = world.tier(indicator_type, value)
+    if tier is Tier.UNKNOWN:
+        return None
+    rng = random.Random(f"virustotal|{indicator_type.value}|{value}")
+    shape = (_VIRUSTOTAL_IP_SHAPES if indicator_type in _IP_TYPES else _VIRUSTOTAL_SHAPES)[tier]
+    theme = theme_for(indicator_type, value)
+    is_file = indicator_type in _FILE_TYPES
+
+    malicious = rng.randint(*shape.malicious)
+    suspicious = rng.randint(*shape.suspicious)
+    flagged = malicious + suspicious
+    engines = rng.randint(64, 76) if is_file else rng.randint(88, 94)
+    stats = {"malicious": malicious, "suspicious": suspicious, "timeout": 0}
+    if is_file:
+        # File scans have no "harmless" opinion: engines either detect or stay silent.
+        stats["harmless"] = 0
+        stats["type-unsupported"] = rng.randint(4, 9)
+        stats["undetected"] = max(engines - flagged - stats["type-unsupported"], 0)
+    else:
+        stats["undetected"] = min(rng.randint(8, 22), max(engines - flagged, 0))
+        stats["harmless"] = max(engines - flagged - stats["undetected"], 0)
+
+    analysed = world.clock() - timedelta(hours=rng.uniform(*shape.analysed_hours_ago))
+    attributes: dict[str, Any] = {
+        "last_analysis_stats": stats,
+        "last_analysis_date": int(analysed.timestamp()),
+        "reputation": rng.randint(*shape.reputation),
+        "tags": _sample(rng, theme.tags) if flagged else [],
+    }
+    if indicator_type in _IP_TYPES:
+        attributes["country"] = (
+            "US" if tier is Tier.CLEAN else rng.choices(_COUNTRIES, _COUNTRY_WEIGHTS)[0]
+        )
+        attributes["asn"] = rng.randint(*_DOCUMENTATION_ASNS)
+        attributes["as_owner"] = rng.choice(_ISPS)
+    else:
+        attributes["categories"] = _categories(rng, tier)
+    if indicator_type is IndicatorType.URL or is_file:
+        first_submitted = analysed - timedelta(days=rng.uniform(1, 60))
+        attributes["first_submission_date"] = int(first_submitted.timestamp())
+        attributes["times_submitted"] = rng.randint(*shape.submissions)
+    if is_file:
+        kind, extension = rng.choice(_FILE_KINDS)
+        attributes["type_description"] = kind
+        attributes["meaningful_name"] = f"sample-{value[:8]}.{extension} (simulated)"
+        if malicious and theme.families:
+            attributes["popular_threat_classification"] = _classification(rng, theme)
+
+    # The id is not the real one, so the adapter builds no link to a VirusTotal page.
+    return {
+        "data": {
+            "id": "simulated",
+            "type": _VIRUSTOTAL_TYPES[indicator_type],
+            "attributes": attributes,
+        }
+    }
+
+
+def _sample(rng: random.Random, options: tuple[str, ...]) -> list[str]:
+    return rng.sample(options, k=rng.randint(1, min(3, len(options))))
+
+
+def _categories(rng: random.Random, tier: Tier) -> dict[str, str]:
+    options = _GOOD_CATEGORIES if tier is Tier.CLEAN else _BAD_CATEGORIES
+    return {source: rng.choice(options) for source in rng.sample(_CATEGORY_SOURCES, k=3)}
+
+
+def _classification(rng: random.Random, theme: Theme) -> dict[str, Any]:
+    names = rng.sample(theme.families, k=rng.randint(1, min(3, len(theme.families))))
+    return {
+        "suggested_threat_label": f"trojan.{names[0].lower().replace(' ', '')}",
+        "popular_threat_name": [{"value": name, "count": rng.randint(3, 30)} for name in names],
+    }
+
+
+def _decode_url_id(identifier: str) -> str | None:
+    """VirusTotal addresses a URL by its URL-safe base64 form, without padding."""
+    try:
+        padded = identifier + "=" * (-len(identifier) % 4)
+        return base64.urlsafe_b64decode(padded.encode("ascii")).decode("ascii")
+    except ValueError:
+        return None
+
+
+def _virustotal_subject(collection: str, identifier: str) -> tuple[IndicatorType, str] | None:
+    value = unquote(identifier)
+    match collection:
+        case "ip_addresses":
+            try:
+                address = ipaddress.ip_address(value)
+            except ValueError:
+                return None
+            return (IndicatorType.IPV6 if address.version == 6 else IndicatorType.IPV4), str(
+                address
+            )
+        case "domains":
+            return IndicatorType.DOMAIN, value.lower()
+        case "urls":
+            decoded = _decode_url_id(value)
+            return None if decoded is None else (IndicatorType.URL, decoded)
+        case _:
+            kind = _HASH_TYPE_BY_LENGTH.get(len(value))
+            return None if kind is None else (kind, value.lower())
+
+
+def _virustotal_response(world: World, collection: str, identifier: str) -> httpx2.Response:
+    subject = _virustotal_subject(collection, identifier)
+    if subject is not None:
+        indicator_type, value = subject
+        failure = _forced_failure(value, "virustotal")
+        if failure is not None:
+            return failure
+        payload = virustotal_payload(world, indicator_type, value)
+        if payload is not None:
+            return httpx2.Response(200, json=payload)
+    return httpx2.Response(
+        404, json={"error": {"code": "NotFoundError", "message": "Resource not found."}}
+    )
+
+
+# --- ThreatFox ---------------------------------------------------------------------------
+
+_THREATFOX_PORTS = (80, 443, 8080, 8443, 4444, 1337, 5555, 9001)
+_THREATFOX_NO_RESULT = {
+    "query_status": "no_result",
+    "data": "Your search did not yield any results",
+}
+
+
+def threatfox_payload(world: World, indicator_type: IndicatorType, value: str) -> dict[str, Any]:
+    """ThreatFox's answer to a search. It holds records for only a few of the indicators."""
+    tier = world.tier(indicator_type, value)
+    rng = random.Random(f"threatfox|{indicator_type.value}|{value}")
+    shape = _THREATFOX_SHAPES[tier]
+    if rng.random() >= shape.coverage:
+        return _THREATFOX_NO_RESULT
+
+    theme = theme_for(indicator_type, value)
+    if not theme.families:
+        theme = THEMES["c2"]  # ThreatFox only lists indicators tied to a malware family
+    family = rng.choice(theme.families)
+    records = [
+        _threatfox_record(rng, world.clock(), indicator_type, value, (theme, family), shape)
+        for _ in range(rng.randint(*shape.records))
+    ]
+    return {"query_status": "ok", "data": records}
+
+
+def _threatfox_record(
+    rng: random.Random,
+    now: datetime,
+    indicator_type: IndicatorType,
+    value: str,
+    malware: tuple[Theme, str],
+    shape: FoxShape,
+) -> dict[str, Any]:
+    theme, family = malware
+    first_seen = now - timedelta(days=rng.uniform(*shape.first_seen_days))
+    # Most IOCs are still live, and ThreatFox reports no end date for those.
+    last_seen = None
+    if rng.random() < 0.4:
+        last_seen = min(now, first_seen + timedelta(days=rng.uniform(0, 10)))
+    ioc, ioc_type = _threatfox_ioc(rng, indicator_type, value)
+    aliases = [name for name in theme.families if name != family]
+    # No record id: a made-up number would link to somebody else's real ThreatFox record.
+    return {
+        "id": None,
+        "ioc": ioc,
+        "ioc_type": ioc_type,
+        "threat_type": "payload_delivery" if indicator_type is IndicatorType.URL else "botnet_cc",
+        "malware": f"sim.{family.lower().replace(' ', '_')}",
+        "malware_printable": family,
+        "malware_alias": ",".join(rng.sample(aliases, k=min(len(aliases), rng.randint(0, 2)))),
+        "malware_malpedia": None,
+        "confidence_level": rng.randint(*shape.confidence),
+        "first_seen": _threatfox_time(first_seen),
+        "last_seen": _threatfox_time(last_seen) if last_seen else None,
+        "reference": None,
+        "reporter": "demo-reporter (simulated)",
+        "tags": _sample(rng, theme.tags),
+    }
+
+
+def _threatfox_ioc(
+    rng: random.Random, indicator_type: IndicatorType, value: str
+) -> tuple[str, str]:
+    port = rng.choice(_THREATFOX_PORTS)
+    if indicator_type is IndicatorType.IPV4:
+        return f"{value}:{port}", "ip:port"
+    if indicator_type is IndicatorType.IPV6:
+        return f"[{value}]:{port}", "ip:port"
+    if indicator_type in (IndicatorType.DOMAIN, IndicatorType.URL):
+        return value, indicator_type.value
+    # A file hash is tied to the servers its malware talks to: documentation addresses only.
+    return f"198.51.100.{rng.randint(1, 254)}:{port}", "ip:port"
+
+
+def _threatfox_time(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _search_kind(query: str, term: str) -> IndicatorType | None:
+    if query == "search_hash":
+        return _HASH_TYPE_BY_LENGTH.get(len(term))
+    try:
+        return IndicatorType.IPV6 if ipaddress.ip_address(term).version == 6 else IndicatorType.IPV4
+    except ValueError:
+        return IndicatorType.URL if "://" in term else IndicatorType.DOMAIN
+
+
+def _threatfox_response(world: World, request: httpx2.Request) -> httpx2.Response:
+    try:
+        body = json.loads(request.content)
+    except ValueError:
+        body = None
+    query = body.get("query") if isinstance(body, dict) else None
+    term = body.get("hash" if query == "search_hash" else "search_term") if body else None
+    if query not in ("search_hash", "search_ioc") or not isinstance(term, str):
+        return httpx2.Response(400, json={"detail": "simulated: unsupported request"})
+    failure = _forced_failure(term, "threatfox")
+    if failure is not None:
+        return failure
+    kind = _search_kind(query, term)
+    if kind is None:
+        return httpx2.Response(200, json={"query_status": "illegal_hash"})
+    return httpx2.Response(200, json=threatfox_payload(world, kind, term))
 
 
 def build_handler(world: World) -> Callable[[httpx2.Request], httpx2.Response]:
@@ -394,16 +747,28 @@ def build_handler(world: World) -> Callable[[httpx2.Request], httpx2.Response]:
         url = request.url
         if request.method == "GET" and url.host == _ABUSEIPDB_HOST and url.path == "/api/v2/check":
             ip = url.params.get("ipAddress", "")
-            return _forced_failure(ip) or httpx2.Response(200, json=abuseipdb_payload(world, ip))
+            return _forced_failure(ip, "abuseipdb") or httpx2.Response(
+                200, json=abuseipdb_payload(world, ip)
+            )
         if request.method == "GET" and url.host == _OTX_HOST:
             # The raw path keeps a percent-encoded URL indicator in one segment.
             match = _OTX_PATH.fullmatch(url.raw_path.split(b"?", 1)[0].decode("ascii"))
-            indicator_type = _OTX_SECTIONS.get(match["section"]) if match else None
-            if match and indicator_type:
+            if match:
                 value = unquote(match["value"])
-                return _forced_failure(value) or httpx2.Response(
-                    200, json=otx_payload(world, indicator_type, value)
-                )
+                if match["section"] == "file":
+                    indicator_type = _HASH_TYPE_BY_LENGTH.get(len(value))
+                else:
+                    indicator_type = _OTX_SECTIONS.get(match["section"])
+                if indicator_type:
+                    return _forced_failure(value, "otx") or httpx2.Response(
+                        200, json=otx_payload(world, indicator_type, value)
+                    )
+        if request.method == "GET" and url.host == _VIRUSTOTAL_HOST:
+            match = _VIRUSTOTAL_PATH.fullmatch(url.raw_path.split(b"?", 1)[0].decode("ascii"))
+            if match:
+                return _virustotal_response(world, match["collection"], match["identifier"])
+        if request.method == "POST" and url.host == _THREATFOX_HOST and url.path == _THREATFOX_PATH:
+            return _threatfox_response(world, request)
         return httpx2.Response(404, json={"detail": "not found"})
 
     return handle
@@ -417,14 +782,24 @@ class SimulatedOTX(OTXCollector):
     simulated = True
 
 
+class SimulatedVirusTotal(VirusTotalCollector):
+    simulated = True
+
+
+class SimulatedThreatFox(ThreatFoxCollector):
+    simulated = True
+
+
 def build_simulated_collectors(
     clock: Clock = utcnow,
     *,
     tiers: Catalogue | None = None,
     abuseipdb_cache_ttl_seconds: int = 6 * 3600,
     otx_cache_ttl_seconds: int = 12 * 3600,
+    virustotal_cache_ttl_seconds: int = 24 * 3600,
+    threatfox_cache_ttl_seconds: int = 6 * 3600,
 ) -> tuple[tuple[Collector, ...], httpx2.Client]:
-    """The two simulated adapters plus the in-process client they share (close it when done)."""
+    """The four simulated adapters plus the in-process client they share (close it when done)."""
     world = World(clock, tiers or {})
     client = httpx2.Client(
         transport=httpx2.MockTransport(build_handler(world)), follow_redirects=False
@@ -434,5 +809,11 @@ def build_simulated_collectors(
             api_key=DEMO_API_KEY, client=client, cache_ttl_seconds=abuseipdb_cache_ttl_seconds
         ),
         SimulatedOTX(api_key=DEMO_API_KEY, client=client, cache_ttl_seconds=otx_cache_ttl_seconds),
+        SimulatedVirusTotal(
+            api_key=DEMO_API_KEY, client=client, cache_ttl_seconds=virustotal_cache_ttl_seconds
+        ),
+        SimulatedThreatFox(
+            api_key=DEMO_API_KEY, client=client, cache_ttl_seconds=threatfox_cache_ttl_seconds
+        ),
     )
     return collectors, client

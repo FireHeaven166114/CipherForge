@@ -16,7 +16,13 @@ Interpretation choices:
 
 from typing import Any, ClassVar
 
-from app.collectors.base import Collector, ProviderFailure, ProviderResult, ProviderStatus
+from app.collectors.base import (
+    Collector,
+    ProviderFailure,
+    ProviderResult,
+    ProviderStatus,
+    Reason,
+)
 from app.collectors.sanitize import (
     bounded_int,
     clean_text,
@@ -33,6 +39,10 @@ MIN_RELIABLE_REPORTS = 3
 LOW_REPORT_DISCOUNT = 0.5
 _BAD_SHAPE = "Unexpected response format from AbuseIPDB."
 _MAX_COUNT = 1_000_000_000
+
+
+def _bad_shape() -> ProviderFailure:
+    return ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE, Reason.MALFORMED_RESPONSE)
 
 
 class AbuseIPDBCollector(Collector):
@@ -54,10 +64,10 @@ class AbuseIPDBCollector(Collector):
 def parse_abuseipdb(payload: Any) -> ProviderResult:
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
-        raise ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE)
+        raise _bad_shape()
     confidence = bounded_int(data.get("abuseConfidenceScore"), 0, 100)
     if confidence is None:
-        raise ProviderFailure(ProviderStatus.ERROR, _BAD_SHAPE)
+        raise _bad_shape()
 
     total_reports = bounded_int(data.get("totalReports"), 0, _MAX_COUNT) or 0
     distinct_reporters = bounded_int(data.get("numDistinctUsers"), 0, _MAX_COUNT) or 0
