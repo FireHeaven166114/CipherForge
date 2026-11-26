@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 912" width="1000" height="912" role="img" aria-labelledby="svg-title svg-desc" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1180" width="1000" height="1180" role="img" aria-labelledby="svg-title svg-desc" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
 <title id="svg-title">How CipherForge fits together</title>
-<desc id="svg-desc">A browser shows the dashboard. A web server (nginx or Vite) serves it and forwards API calls to the CipherForge API. The API checks who you are, validates the indicator, reuses saved answers or asks AbuseIPDB and AlienVault OTX, scores the result, and keeps an audit trail. It stores everything in a database and can validate Microsoft Entra ID sign-in tokens.</desc>
+<desc id="svg-desc">A browser shows the dashboard. A web server (nginx or Vite) serves it and forwards API calls to the CipherForge API. The API checks who you are, validates the indicator, reuses saved answers or asks AbuseIPDB, AlienVault OTX, VirusTotal and ThreatFox, scores the result, and keeps an audit trail. A network monitor reads live traffic or capture files and raises alerts. Uploaded files are encrypted into a folder on the server and shared through links that expire. The API stores its records in a database and can validate Microsoft Entra ID sign-in tokens.</desc>
 <defs>
 <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#38e8ff"/></marker>
 <marker id="ah-ember" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L10,5 L0,9.5 z" fill="#ff8a4c"/></marker>
 </defs>
-<rect width="1000" height="912" rx="18" fill="#060a1a" stroke="#16264a"/>
+<rect width="1000" height="1180" rx="18" fill="#060a1a" stroke="#16264a"/>
 <text x="36" y="54" font-size="26" font-weight="700" fill="#f2f8ff">How CipherForge fits together</text>
 <text x="36" y="82" font-size="15" fill="#93a8c0">Each arrow is a question and an answer. The API is the only part that talks to outside services.</text>
 <rect id="browser" x="200" y="112" width="600" height="84" rx="12" fill="#0c1431" stroke="#38e8ff" stroke-width="1.5"/>
 <text x="500" y="143" font-size="19" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="browser">You, in a web browser</text>
-<text x="500" y="172" font-size="14.5" fill="#c9d8ea" text-anchor="middle" data-in="browser">The dashboard: Overview · Investigate · Indicators · Status</text>
+<text x="500" y="172" font-size="14.5" fill="#c9d8ea" text-anchor="middle" data-in="browser">The dashboard: Overview · Investigate · Indicators · Network · Files · Status</text>
 <path data-kind="conn" d="M500,196 V240" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <text x="516" y="223" font-size="13.5" fill="#93a8c0">web pages and /api calls</text>
 <rect id="web" x="200" y="240" width="600" height="98" rx="12" fill="#0c1431" stroke="#38e8ff" stroke-width="1.5"/>
@@ -20,13 +20,13 @@
 <text x="500" y="320" font-size="14.5" fill="#c9d8ea" text-anchor="middle" data-in="web">Hands out the dashboard and forwards /api, /health and /ready</text>
 <path data-kind="conn" d="M500,338 V380" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <text x="516" y="364" font-size="13.5" fill="#93a8c0">calls to /api are passed on</text>
-<rect id="api" x="40" y="380" width="690" height="262" rx="16" fill="#08102a" stroke="#38e8ff" stroke-width="1.5"/>
+<rect id="api" x="40" y="380" width="690" height="352" rx="16" fill="#08102a" stroke="#38e8ff" stroke-width="1.5"/>
 <text x="64" y="412" font-size="19" font-weight="700" fill="#f2f8ff" data-in="api">CipherForge API</text>
-<text x="64" y="436" font-size="14.5" fill="#c9d8ea" data-in="api">FastAPI (Python). It alone talks to the database and the providers.</text>
+<text x="64" y="436" font-size="14.5" fill="#c9d8ea" data-in="api">FastAPI (Python). Only it reaches the database, files and providers.</text>
 <rect id="chip-gate" x="60" y="454" width="319" height="78" rx="10" fill="#12204a" stroke="#2a4a8a" stroke-width="1.2"/>
 <text x="76" y="480" font-size="16" font-weight="700" fill="#f2f8ff" data-in="chip-gate">Gatekeeper</text>
 <text x="76" y="502" font-size="13.5" fill="#c9d8ea" data-in="chip-gate">Checks your sign-in token and role.</text>
-<text x="76" y="521" font-size="13.5" fill="#c9d8ea" data-in="chip-gate">Limits you to 30 lookups a minute.</text>
+<text x="76" y="521" font-size="13.5" fill="#c9d8ea" data-in="chip-gate">Default limit: 30 lookups a minute.</text>
 <rect id="chip-input" x="391" y="454" width="319" height="78" rx="10" fill="#12204a" stroke="#2a4a8a" stroke-width="1.2"/>
 <text x="407" y="480" font-size="16" font-weight="700" fill="#f2f8ff" data-in="chip-input">Input checks</text>
 <text x="407" y="502" font-size="13.5" fill="#c9d8ea" data-in="chip-input">Cleans up the indicator you typed.</text>
@@ -37,39 +37,66 @@
 <text x="76" y="611" font-size="13.5" fill="#c9d8ea" data-in="chip-engine">asks the providers, then scores.</text>
 <rect id="chip-audit" x="391" y="544" width="319" height="78" rx="10" fill="#12204a" stroke="#2a4a8a" stroke-width="1.2"/>
 <text x="407" y="570" font-size="16" font-weight="700" fill="#f2f8ff" data-in="chip-audit">Audit trail</text>
-<text x="407" y="592" font-size="13.5" fill="#c9d8ea" data-in="chip-audit">Writes a record of every lookup:</text>
+<text x="407" y="592" font-size="13.5" fill="#c9d8ea" data-in="chip-audit">Records lookups, captures and files:</text>
 <text x="407" y="611" font-size="13.5" fill="#c9d8ea" data-in="chip-audit">who, what and when. Never edited.</text>
-<rect id="entra" x="782" y="380" width="178" height="262" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5" stroke-dasharray="6 5"/>
-<text x="871" y="416" font-size="17" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="entra">Microsoft</text>
-<text x="871" y="438" font-size="17" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="entra">Entra ID</text>
-<text x="871" y="474" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">Issues sign-in</text>
-<text x="871" y="493" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">tokens. The API</text>
-<text x="871" y="512" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">downloads its</text>
-<text x="871" y="531" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">public keys to</text>
-<text x="871" y="550" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">check them when</text>
-<text x="871" y="569" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">AUTH_MODE=entra.</text>
-<text x="871" y="604" font-size="13" fill="#93a8c0" text-anchor="middle" data-in="entra">Dev mode skips it.</text>
-<path data-kind="conn" d="M730,511 H782" fill="none" stroke="#ff8a4c" stroke-width="2" stroke-dasharray="5 4" marker-start="url(#ah-ember)" marker-end="url(#ah-ember)"/>
-<path data-kind="conn" d="M240,642 V736" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
-<text x="256" y="694" font-size="13.5" fill="#93a8c0">saves and reads (answers, scores, audit)</text>
-<path data-kind="conn" d="M640,642 V672" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)"/>
-<path data-kind="conn" d="M587.5,736 V672 H842.5 V736" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
-<text x="715" y="702" font-size="13.5" fill="#93a8c0" text-anchor="middle">asks for evidence</text>
-<text x="715" y="720" font-size="13.5" fill="#93a8c0" text-anchor="middle">keys stay on the server</text>
-<rect id="db" x="40" y="736" width="400" height="112" rx="12" fill="#0c1431" stroke="#4ae8b0" stroke-width="1.5"/>
-<text x="240" y="766" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="db">Database</text>
-<text x="240" y="792" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="db">PostgreSQL (SQLite for quick local tries)</text>
-<text x="240" y="813" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="db">Keeps indicators, provider answers</text>
-<text x="240" y="833" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="db">and the audit log (it cannot be edited)</text>
-<rect id="abuseipdb" x="470" y="736" width="235" height="112" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
-<text x="587.5" y="766" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="abuseipdb">AbuseIPDB</text>
-<text x="587.5" y="792" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="abuseipdb">IP address reputation</text>
-<text x="587.5" y="813" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="abuseipdb">IPv4 and IPv6 only</text>
-<text x="587.5" y="833" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="abuseipdb">Needs a free API key</text>
-<rect id="otx" x="725" y="736" width="235" height="112" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
-<text x="842.5" y="766" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="otx">AlienVault OTX</text>
-<text x="842.5" y="792" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="otx">IPs, domains, URLs and</text>
-<text x="842.5" y="813" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="otx">SHA-256 file hashes</text>
-<text x="842.5" y="833" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="otx">Needs a free API key</text>
-<text x="500" y="884" font-size="14" fill="#ffd75a" text-anchor="middle">Not built yet (planned): network sensor, detection rules, correlation, cases, encrypted file sharing.</text>
+<rect id="chip-network" x="60" y="634" width="319" height="78" rx="10" fill="#12204a" stroke="#2a4a8a" stroke-width="1.2"/>
+<text x="76" y="660" font-size="16" font-weight="700" fill="#f2f8ff" data-in="chip-network">Network monitor</text>
+<text x="76" y="682" font-size="13.5" fill="#c9d8ea" data-in="chip-network">Reads live traffic or capture files.</text>
+<text x="76" y="701" font-size="13.5" fill="#c9d8ea" data-in="chip-network">Raises alerts and looks up public IPs.</text>
+<rect id="chip-files" x="391" y="634" width="319" height="78" rx="10" fill="#12204a" stroke="#2a4a8a" stroke-width="1.2"/>
+<text x="407" y="660" font-size="16" font-weight="700" fill="#f2f8ff" data-in="chip-files">Encrypted files</text>
+<text x="407" y="682" font-size="13.5" fill="#c9d8ea" data-in="chip-files">Encrypts every upload before storing it.</text>
+<text x="407" y="701" font-size="13.5" fill="#c9d8ea" data-in="chip-files">Shares it through a link that expires.</text>
+<rect id="entra" x="782" y="380" width="178" height="352" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="871" y="461" font-size="17" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="entra">Microsoft</text>
+<text x="871" y="483" font-size="17" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="entra">Entra ID</text>
+<text x="871" y="519" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">Issues sign-in</text>
+<text x="871" y="538" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">tokens. The API</text>
+<text x="871" y="557" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">downloads its</text>
+<text x="871" y="576" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">public keys to</text>
+<text x="871" y="595" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">check them when</text>
+<text x="871" y="614" font-size="13" fill="#c9d8ea" text-anchor="middle" data-in="entra">AUTH_MODE=entra.</text>
+<text x="871" y="649" font-size="13" fill="#93a8c0" text-anchor="middle" data-in="entra">Dev mode skips it.</text>
+<path data-kind="conn" d="M730,556 H782" fill="none" stroke="#ff8a4c" stroke-width="2" stroke-dasharray="5 4" marker-start="url(#ah-ember)" marker-end="url(#ah-ember)"/>
+<path data-kind="conn" d="M260,732 V802" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<text x="276" y="771" font-size="13.5" fill="#93a8c0">saves and reads</text>
+<path data-kind="conn" d="M640,732 V802" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<text x="656" y="771" font-size="13.5" fill="#93a8c0">saves and reads encrypted files</text>
+<path data-kind="conn" d="M500,732 V944" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)"/>
+<path data-kind="conn" d="M147.5,1004 V944 H852.5 V1004" fill="none" stroke="#38e8ff" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<path data-kind="conn" d="M382.5,944 V1004" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<path data-kind="conn" d="M617.5,944 V1004" fill="none" stroke="#38e8ff" stroke-width="2" marker-end="url(#ah)"/>
+<text x="500" y="968" font-size="13.5" fill="#93a8c0" text-anchor="middle">asks for evidence</text>
+<text x="500" y="986" font-size="13.5" fill="#93a8c0" text-anchor="middle">keys stay on the server</text>
+<rect id="db" x="40" y="802" width="440" height="112" rx="12" fill="#0c1431" stroke="#4ae8b0" stroke-width="1.5"/>
+<text x="260" y="832" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="db">Database</text>
+<text x="260" y="858" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="db">PostgreSQL (SQLite for quick local tries)</text>
+<text x="260" y="879" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="db">Keeps indicators, provider answers, network results,</text>
+<text x="260" y="899" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="db">file records and the audit log (it cannot be edited)</text>
+<rect id="file-store" x="520" y="802" width="440" height="112" rx="12" fill="#0c1431" stroke="#4ae8b0" stroke-width="1.5"/>
+<text x="740" y="832" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="file-store">Encrypted file folder</text>
+<text x="740" y="858" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="file-store">A folder on the server's disk</text>
+<text x="740" y="879" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="file-store">Holds each file only as encrypted data</text>
+<text x="740" y="899" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="file-store">The master key is kept outside it</text>
+<rect id="abuseipdb" x="40" y="1004" width="215" height="112" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
+<text x="147.5" y="1034" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="abuseipdb">AbuseIPDB</text>
+<text x="147.5" y="1060" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="abuseipdb">IP address reputation</text>
+<text x="147.5" y="1081" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="abuseipdb">IPv4 and IPv6 only</text>
+<text x="147.5" y="1101" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="abuseipdb">Needs a free API key</text>
+<rect id="otx" x="275" y="1004" width="215" height="112" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
+<text x="382.5" y="1034" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="otx">AlienVault OTX</text>
+<text x="382.5" y="1060" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="otx">IPs, domains, URLs and</text>
+<text x="382.5" y="1081" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="otx">MD5, SHA-1, SHA-256 hashes</text>
+<text x="382.5" y="1101" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="otx">Needs a free API key</text>
+<rect id="virustotal" x="510" y="1004" width="215" height="112" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
+<text x="617.5" y="1034" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="virustotal">VirusTotal</text>
+<text x="617.5" y="1060" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="virustotal">IPs, domains, URLs and</text>
+<text x="617.5" y="1081" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="virustotal">MD5, SHA-1, SHA-256 hashes</text>
+<text x="617.5" y="1101" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="virustotal">Needs a free API key</text>
+<rect id="threatfox" x="745" y="1004" width="215" height="112" rx="12" fill="#0c1431" stroke="#ff8a4c" stroke-width="1.5"/>
+<text x="852.5" y="1034" font-size="18" font-weight="700" fill="#f2f8ff" text-anchor="middle" data-in="threatfox">ThreatFox</text>
+<text x="852.5" y="1060" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="threatfox">IPs, domains, URLs and</text>
+<text x="852.5" y="1081" font-size="13.5" fill="#c9d8ea" text-anchor="middle" data-in="threatfox">MD5 and SHA-256 hashes</text>
+<text x="852.5" y="1101" font-size="13.5" fill="#93a8c0" text-anchor="middle" data-in="threatfox">Needs a free API key</text>
+<text x="500" y="1152" font-size="14" fill="#ffd75a" text-anchor="middle">Not built yet (planned): remote network sensor, correlation and cases, browser sign-in, Azure.</text>
 </svg>

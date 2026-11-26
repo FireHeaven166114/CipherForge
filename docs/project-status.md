@@ -6,20 +6,24 @@ the detail: what each phase added, and what is still missing.
 
 ## Status
 
-The project is built in vertical slices, each one tested and committed before the next begins, and
-each phase is tagged (`v0.1.0-phase1` up to `v0.5.0-phase3c`).
+The project is built in vertical slices, each one tested before the next begins. Phases 1 to 3c are
+tagged (`v0.1.0-phase1` up to `v0.5.0-phase3c`); Phase 4 has no tag yet.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1 | Foundation: FastAPI, React + TypeScript, PostgreSQL, Docker Compose, configuration, logging, auth shape | **Done.** The Docker stack is built and smoke-tested by CI on a GitHub runner but has not been run on a personal computer, see [verification status](deployment.md#verification-status) |
-| 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against recorded responses only, see [threat-intelligence.md](threat-intelligence.md#verification-status) |
+| 2 | Threat Intel MVP: AbuseIPDB + AlienVault OTX, normalisation, persistence, caching, risk score | **Done** (backend and API). Providers are tested against canned answers; AbuseIPDB and OTX have also been called for real (by the opt-in live test and by the author's own installation), see [threat-intelligence.md](threat-intelligence.md#verification-status) |
 | 3 | SOC dashboard: investigation view, IOC table and search, charts | **Done** (React dashboard for the Phase 2 API). Works against `AUTH_MODE=dev` only: there is no browser sign-in yet |
 | 3b | Command deck: a redesigned futuristic UI, the `/overview` aggregates, a demo mode with simulated providers, and an end-to-end browser test suite | **Done.** Tested against simulated providers only, see [Testing the dashboard](testing.md#testing-the-dashboard) |
 | 3c | Aurora Forge: every screen restyled as spectral glass over a layered, animated background, with a light that follows the pointer, a sliding navigation lamp and choreographed entrances, built on anime.js | **Done.** Visual only: the routes, API calls, wording and behaviour are the same as in 3b. See [the screenshots](../README.md#using-the-dashboard), [Phase 3c](#what-works-today) and [Testing the dashboard](testing.md#testing-the-dashboard) |
-| 4-12 | Network sensor, detection, correlation, mini-SIEM, cases, Vault, integrations, Azure, DevSecOps | Not started |
+| 4 | Expansion: India Standard Time on screen, VirusTotal and ThreatFox, MD5 and SHA-1 indicators, network monitoring (live capture, capture-file analysis, rules NET-001 to NET-007, enrichment), encrypted file sharing | **Done**, with limits: VirusTotal and ThreatFox have never been called for real (no keys were available), live capture was tried on Windows only, and file encryption is server-side. See [Phase 4: expansion](#phase-4-expansion) and the [verification status](deployment.md#verification-status) |
+| 5-12 | A separate network sensor, further detection, correlation, mini-SIEM, cases, integrations, Azure (11), DevSecOps (12) | Not started |
 
-The roadmap follows the project specification; see [architecture.md](architecture.md) for
-how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code.
+The roadmap follows the project specification; see [architecture.md](architecture.md#module-map) for
+how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code. Phase 4 was built ahead of
+the roadmap's order: it delivers the Sentinel module (inside the API process, not as a separate
+sensor) and the Vault module, which the roadmap scheduled later. The remaining phases keep their
+numbers.
 
 ## What works today
 
@@ -50,26 +54,29 @@ how each module (Intel, Sentinel, Core, SOC, Case, Vault) maps to the code.
 - `DELETE /api/v1/intel/indicators/{id}` and `POST /api/v1/intel/indicators/bulk-delete` (up to 100
   ids) delete stored indicators and the provider answers stored for them. See
   [Deleting indicators](#deleting-indicators-after-phase-3c).
-- Answers are cached in PostgreSQL (6 hours for AbuseIPDB, 12 for OTX by default). A provider that
-  is missing, slow or failing shows up as a labelled status; it never breaks the lookup.
+- Answers are cached in PostgreSQL (6 hours for AbuseIPDB, 12 for OTX by default; Phase 4 added 24
+  hours for VirusTotal and 6 for ThreatFox). A provider that is missing, slow or failing shows up as
+  a labelled status; it never breaks the lookup.
 - Every investigation, including refused input, and every deletion of a stored indicator is written
   to an append-only audit table.
   Investigations are rate-limited per analyst. Access needs the `SecurityAnalyst` or `Admin` role.
 - Private, loopback and reserved addresses and internal names are refused before any outside call.
 
 The method is documented in [threat-intelligence.md](threat-intelligence.md) and the
-endpoints in [api.md](api.md).
+endpoints in [api.md](api.md). This block describes Phase 2 as it was built; Phase 4 later added two
+providers (VirusTotal and ThreatFox) and MD5 and SHA-1 hashes, see [Phase 4: expansion](#phase-4-expansion).
 
 **Phase 3: investigation dashboard**
 
-A React single-page app over the Phase 2 API, with five screens (Phase 3b gave them the look and
-the overview described below):
+A React single-page app over the Phase 2 API. These are its five screens as they stood after
+Phase 3b, which added the Overview and the new look. Phase 4 later added the Network and Files
+screens (seven in all, see [Phase 4: expansion](#phase-4-expansion)):
 
 - **Overview**: the command deck described under Phase 3b.
 - **Investigate**: enter an indicator and see the result at once. Each provider is shown on its own
   card (status, freshness, its own evidence), followed by the CipherForge score with the factors
-  behind it, what is not known and the recommended next steps. Internal telemetry is shown as "not
-  connected" rather than left out.
+  behind it, what is not known and the recommended next steps. An internal-evidence card is kept and
+  marked "Not available" rather than left out: no internal telemetry feeds an investigation yet.
 - **Indicators**: search, filter by type and risk (a band, High and Critical together, or Not
   assessed), sort by recent check or by risk, and page through the stored results. The filters live
   in the address, so a view can be bookmarked. Rows can be ticked and deleted (see below).
@@ -94,7 +101,7 @@ workbench, and given one aggregate endpoint to draw from:
   grid, the providers, the highest-risk and latest indicators, and the platform modules, with the
   ones not built yet marked **Planned**. It refreshes itself every minute.
 - **Keyboard first.** `/` or `Ctrl K` opens a command palette (go to a page, investigate or search
-  for what you typed); `G` then `O`, `I`, `L` or `S` jumps to a page.
+  for what you typed); `G` then `O`, `I`, `L` or `S` jumps to a page (Phase 4 added `N` and `F`).
 - **Effects you can switch off.** An animated background, a light that follows the pointer, numbers
   that count up and charts that draw themselves (Phase 3c made them richer). The switch is in the
   header, and they stay off when the system asks for reduced motion.
@@ -169,11 +176,69 @@ indicators they have investigated, one at a time or a selection at once.
   100 ids a request, for analysts and admins only, and a form or link from another site cannot
   trigger it. See [security.md](security.md) and [threat-model.md](threat-model.md) (rows 41 to 45).
 
+## Phase 4: expansion
+
+Phase 4 widened the project in four directions. Each item says what exists; the guide it links to
+holds the detail, so nothing is repeated here.
+
+- **India Standard Time on screen.** The database, the API and the audit trail still hold UTC. Every
+  time a person reads (the dashboard, the header clock, text the backend writes, per-day buckets) is
+  shown as `DD-MM-YYYY hh:mm:ss A IST`. See
+  [Time handling](architecture.md#time-handling-utc-storage-ist-display).
+- **Two more providers and two more hash types.** VirusTotal (API v3) and abuse.ch ThreatFox join
+  AbuseIPDB and AlienVault OTX, and the Investigate page accepts MD5 and SHA-1 hashes next to SHA-256.
+  The score method (`intel-risk-v1`) is unchanged: the new providers only add evidence to it, and
+  "No data" from any provider still means "not assessed", never "safe". VirusTotal and ThreatFox are
+  only asked about an indicator (lookups); nothing is uploaded or submitted for scanning. See
+  [threat-intelligence.md](threat-intelligence.md).
+- **Network monitoring** (the Sentinel module, inside the API process). A user with the
+  `SecurityAnalyst` or `Admin` role starts a live capture on a host interface, or uploads a `.pcap`,
+  `.pcapng` or `.cap` file. The module reads packet headers only, builds flows, applies seven detection rules
+  (NET-001 to NET-007: port scan, connection rate, SYN rate, high volume, known-malicious address,
+  suspicious port, unexpected protocol) and can look up the public addresses in an alert with the
+  providers. Sessions, flows and alerts belong to the user who created them. 12 endpoints under
+  `/api/v1/network`, and the **Network** screen. See [network-monitoring.md](network-monitoring.md)
+  and [detection-engine.md](detection-engine.md).
+- **Encrypted file sharing** (the Vault module). Any signed-in user (`User`, `SecurityAnalyst` or
+  `Admin`) uploads a file, which is encrypted with AES-256-GCM under a fresh key per file, and creates
+  share links with an expiry, a download limit, an optional password and revocation. The owner sees
+  an activity list for each file; the link holder needs no account. 8 owner endpoints under
+  `/api/v1/files`, 3 public ones under `/api/v1/shares`, the **Files** screen and a public **Share**
+  page. The feature stays off until `CIPHERFORGE_MASTER_KEY` is set. It is server-side encryption,
+  not end-to-end, and nobody outside the project has reviewed the design. See
+  [file-sharing.md](file-sharing.md) and [encryption-design.md](encryption-design.md).
+- **The dashboard** now has seven screens (Overview, Investigate, Indicators, Indicator details,
+  Network, Files, System status) and the public Share page. `G` then `N` or `F` jumps to the new
+  ones, and the command palette lists them. The Overview's modules panel marks Network monitoring
+  and Secure file sharing as Live.
+- **The database** gained three migrations, `0003` (hash indicators), `0004` (network monitoring) and
+  `0005` (encrypted files). Existing rows are left alone, and the downgrade path is tested (the `0003`
+  downgrade refuses to run while MD5 or SHA-1 indicators are stored). See
+  [setup.md](setup.md#environment-variables) for the new settings.
+
+What was not done is listed under [Not implemented yet](#not-implemented-yet). What has not been
+checked is recorded in the [verification status](deployment.md#verification-status), and
+[Kinds of evidence](testing.md#kinds-of-evidence) explains what each kind of test can and cannot
+show.
+
 ## Not implemented yet
 
-Sign-in in the browser, packet capture, detection rules, event correlation, alerts,
-incidents, file sharing and encryption, Redis, background workers (so a stored score is recomputed
-only when its indicator is investigated again), Azure deployment. The folders
-`sensor/` and `infra/` and the matching documents in `docs/` are placeholders that say so.
-The frontend has no sign-in flow yet (see [Limitations](../README.md#limitations)), so the dashboard needs
-`AUTH_MODE=dev` or a token supplied some other way.
+Sign-in in the browser; a separate network sensor (the monitoring built in Phase 4 runs inside the API
+process, on the host that has the interface, and `sensor/` is a placeholder); correlation across
+events and sources, a cross-source alert queue, and incidents or cases (network alerts are listed
+under the Network screen only, and they have no status, assignee or notes); file encryption that the
+server cannot undo, rotation or recovery of the master key, secure wiping of deleted files and a
+per-user storage quota; Redis; background workers (so a stored score is recomputed only when its
+indicator is investigated again, old capture sessions are purged when the API starts or the session
+list is loaded rather than by a timer, and nothing removes expired share links or leftover temporary
+blob files on a schedule); Azure deployment, including Key Vault for the master key and provider keys
+and Blob Storage for the encrypted files. The folders `infra/` and `sensor/` are placeholders that
+say so.
+
+Nobody outside the project has reviewed the file-encryption design or the code (see
+[threat-model.md](threat-model.md)).
+
+The frontend has no sign-in flow yet (see [Limitations](../README.md#limitations)): its API client has
+a hook for a token provider and nothing registers one, so the dashboard needs `AUTH_MODE=dev`. The
+investigation page still shows its internal-evidence card as "Not available": nothing from network
+monitoring feeds an investigation or its score.
