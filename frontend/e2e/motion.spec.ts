@@ -175,10 +175,10 @@ test.describe("the navigation lamp", () => {
       await expect(page).toHaveURL(/\/indicators$/);
       await expectLampOn(page, nav.getByRole("link", { name: "Indicators", exact: true }));
 
-      // The last tab ends where the window does.
-      await nav.getByRole("link", { name: "System status", exact: true }).click();
-      await expect(page).toHaveURL(/\/status$/);
-      await expectLampOn(page, nav.getByRole("link", { name: "System status", exact: true }));
+      // The last tab ends where the window does. The tab bar has five links and leaves out System status.
+      await nav.getByRole("link", { name: "Files", exact: true }).click();
+      await expect(page).toHaveURL(/\/files$/);
+      await expectLampOn(page, nav.getByRole("link", { name: "Files", exact: true }));
       const lamp = await page.locator(".cf-lamp").boundingBox();
       if (lamp === null) throw new Error("the lamp has a box");
       expect(lamp.x + lamp.width, "the lamp ends inside the window").toBeLessThanOrEqual(PHONE.width + 0.01);

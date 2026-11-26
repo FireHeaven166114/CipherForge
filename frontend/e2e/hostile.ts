@@ -285,6 +285,8 @@ export function hostileDossier(words: Words): HostileDossier {
     },
     tags: [say("abuse-tag-one", "markup"), say("abuse-tag-two", "handler")],
     message: say("abuse-message", "encoded"),
+    verdict: null,
+    reason: null,
   };
 
   // Only the first is a technique ID. The rest are shown as plain text and never as a link.
@@ -323,6 +325,115 @@ export function hostileDossier(words: Words): HostileDossier {
     },
     tags: [say("otx-tag", "frame")],
     message: null,
+    verdict: null,
+    reason: null,
+  };
+
+  // Valid links on the two providers that build their own: the only ones that may be drawn. The
+  // other record on each is written as a link that must not become one.
+  const virustotal: ProviderView = {
+    provider: "virustotal",
+    display_name: say("vt-name", "handler"),
+    status: "ok",
+    freshness: "fresh",
+    signal: 0.62,
+    fetched_at: VALID_TIME,
+    evidence_at: silent("vt-evidence-at", "frame"),
+    first_evidence_at: silent("vt-first-evidence-at", "markup"),
+    cache_expires_at: VALID_TIME,
+    from_cache: false,
+    summary: {
+      verdict: "malicious",
+      analysis_status: "completed",
+      malicious: 9,
+      suspicious: 2,
+      harmless: 50,
+      undetected: 14,
+      timeout: 1,
+      engines_total: 76,
+      reputation: -30,
+      last_analysis_at: VALID_TIME,
+      first_submission_at: VALID_TIME,
+      times_submitted: 4,
+      categories: [say("vt-category", "markup")],
+      threat_label: say("vt-threat-label", "scheme"),
+      threat_names: [say("vt-threat-name", "encoded")],
+      file_name: say("vt-file-name", "handler"),
+      file_type: say("vt-file-type", "frame"),
+      country_code: say("vt-country", "markup"),
+      asn: 64500,
+      as_owner: say("vt-as-owner", "scheme"),
+      provider_id: say("vt-provider-id", "encoded"),
+      provider_link: "https://www.virustotal.com/gui/domain/example.net",
+      malware_families: [say("vt-family", "handler")],
+      notes: [say("vt-note", "frame")],
+    },
+    tags: [say("vt-tag", "markup")],
+    message: say("vt-message", "scheme"),
+    verdict: "malicious",
+    reason: null,
+  };
+
+  // The reporter's address is the one thing a reporter chooses freely. It is written out defanged
+  // and never linked, so a hostile one cannot lead anywhere.
+  const reference = "https://reports.evil.example/path?a=1";
+  shown.push("hxxps://reports.evil.example/path?a=1");
+  const threatfox: ProviderView = {
+    provider: "threatfox",
+    display_name: say("tf-name", "frame"),
+    status: "ok",
+    freshness: "fresh",
+    signal: 0.9,
+    fetched_at: VALID_TIME,
+    evidence_at: VALID_TIME,
+    first_evidence_at: null,
+    cache_expires_at: null,
+    from_cache: true,
+    summary: {
+      verdict: "malicious",
+      match_count: 2,
+      highest_confidence: 90,
+      association: "indicator",
+      matches: [
+        {
+          id: "1234567",
+          ioc: say("tf-ioc-linked", "markup"),
+          ioc_type: say("tf-ioc-type", "scheme"),
+          threat_type: say("tf-threat-type", "handler"),
+          malware: say("tf-malware", "encoded"),
+          malware_aliases: [say("tf-alias", "frame")],
+          confidence_level: 90,
+          first_seen: silent("tf-first-seen", "scheme"),
+          last_seen: VALID_TIME,
+          reporter: say("tf-reporter", "markup"),
+          reference,
+          malpedia_url: "https://malpedia.caad.fkie.fraunhofer.de/details/win.examplebot",
+          tags: [say("tf-tag", "handler")],
+        },
+        {
+          id: `javascript:${mark("tf-id")}`,
+          ioc: say("tf-ioc-unlinked", "scheme"),
+          ioc_type: null,
+          threat_type: null,
+          malware: null,
+          malware_aliases: [],
+          confidence_level: 40,
+          first_seen: null,
+          last_seen: null,
+          reporter: null,
+          reference: say("tf-reference", "frame"),
+          malpedia_url: "https://evil.example/details/win.examplebot",
+          tags: [],
+        },
+      ],
+      threat_types: [say("tf-threat-types", "markup")],
+      malware_families: [say("tf-family", "scheme")],
+      notes: [say("tf-note", "encoded")],
+    },
+    tags: [say("tf-provider-tag", "handler")],
+    message: null,
+    verdict: "malicious",
+    reason: null,
   };
 
   const failed: ProviderView = {
@@ -339,6 +450,8 @@ export function hostileDossier(words: Words): HostileDossier {
     summary: {},
     tags: [],
     message: say("evil-message", "markup"),
+    verdict: null,
+    reason: "unavailable",
   };
 
   const dossier: Investigation = {
@@ -358,15 +471,15 @@ export function hostileDossier(words: Words): HostileDossier {
       scored_at: VALID_TIME,
       last_checked_at: silent("last-checked", "markup"),
     },
-    providers: [abuse, otx, failed],
+    providers: [abuse, otx, virustotal, threatfox, failed],
     score: {
       methodology: say("methodology", "scheme"),
       score: 77,
       classification: "high",
       confidence: 64,
-      answered_sources: 2,
-      contributing_sources: 2,
-      supporting_sources: 2,
+      answered_sources: 4,
+      contributing_sources: 4,
+      supporting_sources: 4,
       factors: [
         { code: attack("markup", "factor-code"), label: say("factor-label-one", "encoded"), points: 40, detail: say("factor-detail-one", "markup") },
         { code: attack("handler", "factor-code-two"), label: say("factor-label-two", "handler"), points: 37, detail: say("factor-detail-two", "frame") },
@@ -393,8 +506,9 @@ export async function serveHostileDossier(page: Page, words: Words): Promise<Hos
 /**
  * Everything in the page that could load, run or navigate somewhere, other than what the app
  * itself puts there: frames, embeds, images, scripts other than the app's bundle, event handlers,
- * and links that lead anywhere but a page of the app, an on-page anchor, or the two sites the app
- * builds links to itself. Each finding says what it is and shows the markup.
+ * and links that lead anywhere but a page of the app, an on-page anchor, or the sites the app builds
+ * links to itself (OTX, ATT&CK, VirusTotal, ThreatFox, Malpedia). Each finding says what it is and
+ * shows the markup.
  */
 export function activeContent(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -415,6 +529,9 @@ export function activeContent(page: Page): Promise<string[]> {
       /^#/,
       /^https:\/\/otx\.alienvault\.com\/pulse\/[0-9a-f]{24}$/,
       /^https:\/\/attack\.mitre\.org\/techniques\/T\d{4}(?:\/\d{3})?\/$/,
+      /^https:\/\/www\.virustotal\.com\/gui\/(?:ip-address|domain|url|file)\/[A-Za-z0-9._:%-]{1,256}$/,
+      /^https:\/\/threatfox\.abuse\.ch\/ioc\/\d{1,12}\/$/,
+      /^https:\/\/malpedia\.caad\.fkie\.fraunhofer\.de\/(?:details|actor)\/[a-z0-9_.-]{1,96}$/,
     ];
     const BUNDLE = /^\/assets\/[\w.-]+\.js$/;
 

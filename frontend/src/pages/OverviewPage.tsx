@@ -21,11 +21,11 @@ import KpiTile from "../components/overview/KpiTile";
 import ModulesPanel from "../components/overview/ModulesPanel";
 import ProvidersPanel from "../components/overview/ProvidersPanel";
 import { BUTTON, LINK, PRIMARY_BUTTON } from "../components/styles";
-import { formatClock } from "../features/intel/format";
 import { indicatorsHref } from "../features/intel/filters";
 import { countryLabel } from "../features/overview/countries";
 import { longDay, shortDay } from "../features/overview/dates";
 import { describeTrend } from "../features/overview/trend";
+import { formatIstTime } from "../features/time/ist";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLiveResource } from "../hooks/useLiveResource";
 import { getOverview } from "../services/intelService";
@@ -52,7 +52,7 @@ function ScopeNote({ overview }: { overview: Overview }) {
     <div className="space-y-1 text-xs text-ink-300">
       <p>
         Counts and risk bands cover every stored indicator. Trends cover the last {scope.series_days} days and
-        hourly activity the last {scope.activity_days}, all in UTC.
+        hourly activity the last {scope.activity_days}, all in IST.
       </p>
       {scope.lookups_truncated ? (
         <p role="note" className="text-warn">
@@ -147,7 +147,7 @@ function Deck({ overview, focus, onFocus }: DeckProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 @deck:grid-cols-12">
           <Panel title="Threat pulse" code="TRD" className="@deck:col-span-8">
-            <p className={CAPTION}>Lookups per UTC day, and how many of them ended High or Critical.</p>
+            <p className={CAPTION}>Lookups per IST day, and how many of them ended High or Critical.</p>
             <AreaChart
               categories={categories}
               axisLabel={shortDay}
@@ -237,7 +237,7 @@ function Deck({ overview, focus, onFocus }: DeckProps) {
           </Panel>
 
           <Panel title="Lookup activity" code="ACT" className="@deck:col-span-8">
-            <p className={CAPTION}>Lookups per hour of the day (UTC) over the last {overview.activity.length} days.</p>
+            <p className={CAPTION}>Lookups per hour of the day (IST) over the last {overview.activity.length} days.</p>
             <ActivityHeatmap rows={overview.activity} />
           </Panel>
 
@@ -294,7 +294,7 @@ export default function OverviewPage() {
   const [focus, setFocus] = useState<Focus | null>(null);
 
   const ready = state.status === "ready" ? state : null;
-  const refreshedAt = ready === null ? null : formatClock(new Date(ready.updatedAt));
+  const refreshedAt = ready === null ? null : formatIstTime(new Date(ready.updatedAt));
 
   return (
     <div className="space-y-4">

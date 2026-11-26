@@ -1,4 +1,5 @@
 import { hourLabel, longDay, weekdayAndDate } from "../../features/overview/dates";
+import { IST_LABEL } from "../../features/time/ist";
 import type { ActivityRow } from "../../types/intel";
 import { heatLevel } from "./geometry";
 
@@ -22,7 +23,7 @@ function busiest(hours: readonly number[]): { hour: number; lookups: number } | 
   return best;
 }
 
-/** Lookups by day and by hour of the UTC day. Brighter cells are busier hours. */
+/** Lookups by day and by hour of the IST day. Brighter cells are busier hours. */
 export default function ActivityHeatmap({ rows }: ActivityHeatmapProps) {
   const width = LABEL_WIDTH + 24 * CELL;
   const height = HEADER + rows.length * CELL + FOOT;
@@ -67,14 +68,14 @@ export default function ActivityHeatmap({ rows }: ActivityHeatmapProps) {
                 strokeWidth={1}
                 className="fill-cipher hover:stroke-ink-50"
               >
-                <title>{`${longDay(row.day)}, ${hourLabel(hour)} UTC: ${lookups} ${lookups === 1 ? "lookup" : "lookups"}`}</title>
+                <title>{`${longDay(row.day)}, ${hourLabel(hour)} ${IST_LABEL}: ${lookups} ${lookups === 1 ? "lookup" : "lookups"}`}</title>
               </rect>
             ))}
           </g>
         ))}
       </svg>
       <div className="mt-2 flex items-center justify-between text-[0.68rem] text-ink-300" aria-hidden="true">
-        <span>Hours are UTC</span>
+        <span>Hours are {IST_LABEL}</span>
         <span className="flex items-center gap-1.5">
           fewer
           {OPACITY.map((opacity) => (
@@ -87,7 +88,7 @@ export default function ActivityHeatmap({ rows }: ActivityHeatmapProps) {
       {/* The wrapper does the hiding: a table ignores a width of 1px and would widen the page. */}
       <div className="sr-only">
         <table>
-          <caption>Lookups per day, with the busiest hour (UTC)</caption>
+          <caption>Lookups per day, with the busiest hour ({IST_LABEL})</caption>
           <thead>
             <tr>
               <th scope="col">Day</th>
@@ -102,7 +103,7 @@ export default function ActivityHeatmap({ rows }: ActivityHeatmapProps) {
                 <tr key={row.day}>
                   <th scope="row">{longDay(row.day)}</th>
                   <td>{row.hours.reduce((sum, lookups) => sum + lookups, 0)}</td>
-                  <td>{top === null ? "None" : `${hourLabel(top.hour)} UTC (${top.lookups})`}</td>
+                  <td>{top === null ? "None" : `${hourLabel(top.hour)} ${IST_LABEL} (${top.lookups})`}</td>
                 </tr>
               );
             })}

@@ -1,7 +1,9 @@
 import {
   CLASSIFICATIONS,
   INDICATOR_TYPES,
+  PROVIDER_REASONS,
   PROVIDER_STATUSES,
+  PROVIDER_VERDICTS,
   type ActivityRow,
   type DayPoint,
   type DeleteResult,
@@ -20,48 +22,27 @@ import {
   type ScoreFactor,
   type Stats,
 } from "../types/intel";
+import {
+  isArrayOf,
+  isCount,
+  isCountRecord,
+  isFiniteNumber,
+  isNullableString,
+  isOneOf,
+  isRecord,
+  isString,
+  isStringArray,
+} from "./guardPrimitives";
 
-// Runtime checks for API responses. A 200 response with the wrong shape is reported as an
-// invalid response instead of crashing a page halfway through rendering.
+// Runtime checks for API responses; the building blocks are shared with the other *Guards files.
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-
-function isArrayOf<T>(guard: (item: unknown) => item is T): (value: unknown) => value is T[] {
-  return (value): value is T[] => Array.isArray(value) && value.every(guard);
-}
-
-function isOneOf<T extends string>(allowed: readonly T[]): (value: unknown) => value is T {
-  return (value): value is T => typeof value === "string" && (allowed as readonly string[]).includes(value);
-}
-
-const isStringArray = isArrayOf(isString);
 const isClassification = isOneOf(CLASSIFICATIONS);
 const isIndicatorType = isOneOf(INDICATOR_TYPES);
 const isProviderStatus = isOneOf(PROVIDER_STATUSES);
+const isProviderVerdict = isOneOf(PROVIDER_VERDICTS);
+const isProviderReason = isOneOf(PROVIDER_REASONS);
 const isIndicatorStatus = isOneOf(["active", "stale"] as const);
 const isFreshness = isOneOf(["fresh", "stale"] as const);
-
-function isCountRecord(value: unknown): value is Record<string, number> {
-  return isRecord(value) && Object.values(value).every(isCount);
-}
 
 export function isIndicator(value: unknown): value is Indicator {
   return (
@@ -98,7 +79,9 @@ function isProviderView(value: unknown): value is ProviderView {
     typeof value.from_cache === "boolean" &&
     isRecord(value.summary) &&
     isStringArray(value.tags) &&
-    isNullableString(value.message)
+    isNullableString(value.message) &&
+    (value.verdict === null || isProviderVerdict(value.verdict)) &&
+    (value.reason === null || isProviderReason(value.reason))
   );
 }
 

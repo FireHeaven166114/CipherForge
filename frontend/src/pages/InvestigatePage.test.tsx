@@ -247,6 +247,12 @@ describe("InvestigatePage", () => {
     expect(indicatorInput()).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /^MD5/ }));
+    expect(indicatorInput()).toHaveValue("d41d8cd98f00b204e9800998ecf8427e");
+
+    await user.click(screen.getByRole("button", { name: /^SHA-1/ }));
+    expect(indicatorInput()).toHaveValue("da39a3ee5e6b4b0d3255bfef95601890afd80709");
+
     await user.click(screen.getByRole("button", { name: /^SHA-256/ }));
     expect((indicatorInput() as HTMLInputElement).value).toMatch(/^e3b0c442[0-9a-f]{56}$/);
     expect(fetchMock).not.toHaveBeenCalled();

@@ -115,6 +115,17 @@ test.describe("the scanner for active content", () => {
       finding: /unsafe URL in href/,
     },
     { name: "a pulse link whose ID is not a pulse ID", html: '<a href="https://otx.alienvault.com/pulse/x">x</a>', finding: /unsafe URL in href/ },
+    {
+      name: "a VirusTotal link on a look-alike host",
+      html: '<a href="https://www.virustotal.com.evil.example/gui/domain/example.net">x</a>',
+      finding: /unsafe URL in href/,
+    },
+    { name: "a ThreatFox link whose ID is not a number", html: '<a href="https://threatfox.abuse.ch/ioc/x/">x</a>', finding: /unsafe URL in href/ },
+    {
+      name: "a Malpedia link on another host",
+      html: '<a href="https://evil.example/details/win.examplebot">x</a>',
+      finding: /unsafe URL in href/,
+    },
     { name: "a data: source", html: '<input src="data:text/html,x">', finding: /unsafe URL in src/ },
     { name: "a new-tab link with no rel", html: '<a href="/indicators" target="_blank">x</a>', finding: /new tab without noopener and noreferrer/ },
     {
@@ -421,18 +432,23 @@ test.describe("a stored record whose every provider field is hostile", () => {
     await expectInert(page, "the dossier");
   });
 
-  test("links out only to the two sites it builds links to itself, and only from valid IDs", async ({ page }) => {
+  test("links out only to the sites it builds links to itself, and only from valid IDs", async ({ page }) => {
     await serveHostileDossier(page, ATTACKS);
     await openRecord(page, DOSSIER_ID);
 
+    // The hostile VirusTotal and ThreatFox records each carry one well-formed link beside links
+    // that are not (a javascript: ID, a Malpedia address on another host); only the first is drawn.
     const links = page.locator('a[target="_blank"]');
-    await expect(links).toHaveCount(2);
+    await expect(links).toHaveCount(5);
     const found = await links.evaluateAll((anchors) =>
       anchors.map((anchor) => ({ href: anchor.getAttribute("href"), rel: anchor.getAttribute("rel") })),
     );
     expect(found.map((link) => link.href).sort()).toEqual([
       "https://attack.mitre.org/techniques/T1059/001/",
+      "https://malpedia.caad.fkie.fraunhofer.de/details/win.examplebot",
       "https://otx.alienvault.com/pulse/5c0ffee0aaaaaaaaaaaaaaaa",
+      "https://threatfox.abuse.ch/ioc/1234567/",
+      "https://www.virustotal.com/gui/domain/example.net",
     ]);
     for (const link of found) {
       expect(link.rel?.split(/\s+/)).toEqual(expect.arrayContaining(["noopener", "noreferrer"]));

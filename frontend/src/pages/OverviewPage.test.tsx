@@ -92,7 +92,7 @@ describe("OverviewPage", () => {
     serveOverview(() => jsonResponse(makeOverview()));
     renderOverview();
 
-    expect(await screen.findByText(/Live · refreshed \d{2}:\d{2}:\d{2} UTC/)).toBeInTheDocument();
+    expect(await screen.findByText(/Live · refreshed \d{2}:\d{2}:\d{2} (AM|PM) IST/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
   });
 
@@ -132,14 +132,14 @@ describe("OverviewPage", () => {
     expect(unassessed).not.toHaveTextContent("Informational");
   });
 
-  it("marks the modules that are not built as planned", async () => {
+  it("marks the modules that are built as live and the rest as planned", async () => {
     serveOverview(() => jsonResponse(makeOverview()));
     renderOverview();
     await figure(/Indicators tracked/);
 
     const modules = within(panel("Platform modules"));
-    expect(modules.getAllByText("Planned")).toHaveLength(4);
-    expect(modules.getByText("Live")).toBeInTheDocument();
+    expect(modules.getAllByText("Planned")).toHaveLength(2);
+    expect(modules.getAllByText("Live")).toHaveLength(3);
   });
 
   it("opens the detail behind a bar, links to its indicators and closes with Escape", async () => {
@@ -195,7 +195,7 @@ describe("OverviewPage", () => {
     await figure(/Indicators tracked/);
 
     const providers = within(panel("Intelligence providers"));
-    expect(providers.getAllByText("Simulated")).toHaveLength(2);
+    expect(providers.getAllByText("Simulated")).toHaveLength(4);
     expect(providers.queryByText("Configured")).not.toBeInTheDocument();
   });
 

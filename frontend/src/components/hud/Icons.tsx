@@ -61,6 +61,29 @@ export function StatusIcon(props: IconProps) {
   );
 }
 
+export function NetworkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="5.5" r="2" />
+      <circle cx="5.5" cy="18" r="2" />
+      <circle cx="18.5" cy="18" r="2" />
+      <path d="M12 7.5v4M12 11.5l-5.2 5M12 11.5l5.2 5" />
+      <circle cx="12" cy="11.5" r="1" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function FilesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M13.5 3.5H7a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8.5l-4.5-5Z" />
+      <path d="M13.5 3.5v5H18" />
+      <rect x="9.25" y="13.25" width="5.5" height="4" rx="1" />
+      <path d="M10.4 13.25v-1a1.6 1.6 0 0 1 3.2 0v1" />
+    </Icon>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -127,6 +150,75 @@ export function TrashIcon(props: IconProps) {
       <path d="M4 7h16M10 7V4.5h4V7" />
       <path d="m6.5 7 .8 12.2a1 1 0 0 0 1 .8h7.4a1 1 0 0 0 1-.8L17.5 7" />
       <path d="M10 11v5M14 11v5" />
+    </Icon>
+  );
+}
+
+export function UploadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 16V4M7 9l5-5 5 5" />
+      <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+    </Icon>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v12M7 11l5 5 5-5" />
+      <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+    </Icon>
+  );
+}
+
+export function CopyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="1.5" />
+      <path d="M15.5 8.5v-3a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" />
+    </Icon>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </Icon>
+  );
+}
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+    </Icon>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    </Icon>
+  );
+}
+
+export function LockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5.5" y="11" width="13" height="9" rx="1.5" />
+      <path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" />
+    </Icon>
+  );
+}
+
+export function LinkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
     </Icon>
   );
 }

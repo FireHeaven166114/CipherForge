@@ -8,9 +8,18 @@ import VerdictCard from "./VerdictCard";
 
 /**
  * Everything known about one indicator: the verdict first, then each provider's own answer,
- * how the score was built, and (separately) internal evidence.
+ * how the score was built, and (separately) internal evidence. `onRetry` asks the providers
+ * again; a provider whose lookup failed offers it when asking again could help.
  */
-export default function InvestigationView({ investigation }: { investigation: Investigation }) {
+export default function InvestigationView({
+  investigation,
+  onRetry,
+  retrying = false,
+}: {
+  investigation: Investigation;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
   const headingId = useId();
   const { indicator, providers, score, internal_evidence: internalEvidence } = investigation;
 
@@ -34,7 +43,13 @@ export default function InvestigationView({ investigation }: { investigation: In
         </p>
         <div className="mt-3 grid grid-cols-1 gap-4 @split:grid-cols-2">
           {providers.map((provider) => (
-            <ProviderCard key={provider.provider} provider={provider} />
+            <ProviderCard
+              key={provider.provider}
+              provider={provider}
+              attemptedAt={indicator.last_checked_at}
+              onRetry={onRetry}
+              retrying={retrying}
+            />
           ))}
         </div>
       </section>

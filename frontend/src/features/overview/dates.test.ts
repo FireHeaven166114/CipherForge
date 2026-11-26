@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { hourLabel, longDay, parseDay, shortDay, weekdayAndDate } from "./dates";
 
 describe("day formatting", () => {
-  it("formats a UTC calendar day in three lengths", () => {
+  it("formats an IST calendar day in three lengths", () => {
     expect(shortDay("2026-05-14")).toBe("14 May");
     expect(weekdayAndDate("2026-05-14")).toBe("Thu 14");
     expect(longDay("2026-05-14")).toBe("Thu 14 May 2026");

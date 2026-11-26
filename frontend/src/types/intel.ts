@@ -4,7 +4,7 @@
 export const CLASSIFICATIONS = ["informational", "low", "medium", "high", "critical"] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
 
-export const INDICATOR_TYPES = ["ipv4", "ipv6", "domain", "url", "sha256"] as const;
+export const INDICATOR_TYPES = ["ipv4", "ipv6", "domain", "url", "md5", "sha1", "sha256"] as const;
 export type IndicatorType = (typeof INDICATOR_TYPES)[number];
 
 export const PROVIDER_STATUSES = [
@@ -17,6 +17,25 @@ export const PROVIDER_STATUSES = [
   "not_queried",
 ] as const;
 export type ProviderStatus = (typeof PROVIDER_STATUSES)[number];
+
+/**
+ * What a provider itself concluded (VirusTotal, ThreatFox). It labels that provider's data and is
+ * not a CipherForge verdict: "harmless" and "not_found" never mean the indicator is safe.
+ */
+export const PROVIDER_VERDICTS = ["malicious", "suspicious", "harmless", "unknown", "not_found"] as const;
+export type ProviderVerdict = (typeof PROVIDER_VERDICTS)[number];
+
+/** Why a lookup produced no answer. Null when the provider answered or does not handle the type. */
+export const PROVIDER_REASONS = [
+  "not_configured",
+  "invalid_input",
+  "auth_failed",
+  "rate_limited",
+  "timeout",
+  "unavailable",
+  "malformed_response",
+] as const;
+export type ProviderReason = (typeof PROVIDER_REASONS)[number];
 
 /** "active": at least one provider answered freshly. "stale": no fresh provider evidence. */
 export type IndicatorStatus = "active" | "stale";
@@ -56,6 +75,9 @@ export interface ProviderView {
   summary: Record<string, unknown>;
   tags: string[];
   message: string | null;
+  /** The provider's own conclusion, for providers that give one. */
+  verdict: ProviderVerdict | null;
+  reason: ProviderReason | null;
 }
 
 export interface ScoreFactor {
@@ -162,7 +184,7 @@ export interface OverviewKpis {
 }
 
 export interface DayPoint {
-  /** A UTC calendar day, `YYYY-MM-DD`. */
+  /** An IST calendar day, `YYYY-MM-DD`. */
   day: string;
   lookups: number;
   high_risk_lookups: number;
@@ -171,7 +193,7 @@ export interface DayPoint {
 
 export interface ActivityRow {
   day: string;
-  /** Lookup counts for the 24 UTC hours of the day. */
+  /** Lookup counts for the 24 IST hours of the day. */
   hours: number[];
 }
 

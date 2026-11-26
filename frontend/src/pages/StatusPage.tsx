@@ -5,7 +5,7 @@ import StatusReactor from "../components/status/StatusReactor";
 import StatusBadge, { type Tone } from "../components/StatusBadge";
 import { BUTTON, LABEL } from "../components/styles";
 import type { CheckResult, OverallStatus } from "../features/status/overallStatus";
-import { formatClock } from "../features/intel/format";
+import { formatIstTime } from "../features/time/ist";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useServiceStatus } from "../hooks/useServiceStatus";
 import type { ApiError } from "../services/apiClient";
@@ -124,7 +124,7 @@ export default function StatusPage() {
                 {isRefreshing ? "Checking…" : "Refresh"}
               </button>
               <p className="font-mono text-xs text-ink-300">
-                {checkedAt ? `Last checked ${formatClock(checkedAt)}.` : "Not checked yet."} This
+                {checkedAt ? `Last checked ${formatIstTime(checkedAt)}.` : "Not checked yet."} This
                 page refreshes automatically every 30 seconds.
               </p>
             </div>

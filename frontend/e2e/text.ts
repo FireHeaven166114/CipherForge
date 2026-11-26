@@ -26,15 +26,22 @@ export function exactly(text: string): RegExp {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
-/** "Thu 29 Oct 2026" for a `YYYY-MM-DD` day of the UTC calendar. */
+/** "Thu 29 Oct 2026" for a `YYYY-MM-DD` day of the IST calendar. */
 export function longDay(day: string): string {
   const date = new Date(`${day}T00:00:00Z`);
   return `${must(WEEKDAYS[date.getUTCDay()])} ${date.getUTCDate()} ${must(MONTHS[date.getUTCMonth()])} ${date.getUTCFullYear()}`;
 }
 
-/** "14:00" for an hour of the UTC day. */
+/** "14:00" for an hour of the IST day. */
 export function hourText(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;
+}
+
+/** Seconds past midnight in the "hh:mm:ss AM IST" a page prints, found anywhere in `text`. */
+export function istClockSeconds(text: string): number {
+  const match = must(/(\d{2}):(\d{2}):(\d{2}) (AM|PM) IST/.exec(text), "an IST time");
+  const [hours, minutes, seconds] = match.slice(1, 4).map(Number);
+  return ((must(hours) % 12) + (match[4] === "PM" ? 12 : 0)) * 3600 + must(minutes) * 60 + must(seconds);
 }
 
 /** The risk band of a score, by the API's own cut-offs (intel-risk-v1). */

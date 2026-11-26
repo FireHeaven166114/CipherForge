@@ -34,6 +34,8 @@ describe("typeAxes", () => {
       ["IPv6", 1],
       ["Domain", 3],
       ["URL", 1],
+      ["MD5", 0],
+      ["SHA-1", 0],
       ["SHA-256", 1],
     ]);
     expect(axes[2]?.to).toBe("/indicators?type=domain");

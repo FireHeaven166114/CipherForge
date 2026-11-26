@@ -3,7 +3,7 @@ import type { Locator, Page, Route } from "@playwright/test";
 import { countRequests } from "./api";
 import { expect, test } from "./fixtures";
 import { panel, pause } from "./pages";
-import { must } from "./text";
+import { istClockSeconds, must } from "./text";
 
 const HEALTH = /\/health$/;
 const READY = /\/ready$/;
@@ -118,11 +118,10 @@ async function expectState(view: StatusView, overall: Overall, cards: Cards): Pr
   await expect(view.beacon).toHaveText(OVERALL[overall].beacon);
 }
 
-/** Seconds past midnight UTC in "Last checked HH:MM:SS UTC". */
+/** Seconds past midnight IST in "Last checked hh:mm:ss AM IST". */
 async function checkedAt(checked: Locator): Promise<number> {
   const text = must(await checked.textContent());
-  const [hours, minutes, seconds] = must(/Last checked (\d{2}):(\d{2}):(\d{2}) UTC/.exec(text)).slice(1).map(Number);
-  return must(hours) * 3600 + must(minutes) * 60 + must(seconds);
+  return istClockSeconds(must(/Last checked (\d{2}:\d{2}:\d{2} (?:AM|PM) IST)/.exec(text))[1] ?? "");
 }
 
 function secondsBetween(earlier: number, later: number): number {
@@ -142,7 +141,7 @@ test.describe("a healthy API", () => {
     await expect(page).toHaveTitle("System status \u00b7 CipherForge");
     await expectState(view, "Operational", { api: "Up", database: "Reachable" });
     await expect(view.refresh).toBeEnabled();
-    await expect(view.checked).toHaveText("Last checked 05:06:07 UTC. This page refreshes automatically every 30 seconds.");
+    await expect(view.checked).toHaveText("Last checked 10:36:07 AM IST. This page refreshes automatically every 30 seconds.");
     await expect(view.api.getByRole("term")).toHaveText(["Service", "Version"]);
     await expect(view.api.getByRole("definition")).toHaveText([health.service, health.version]);
     await expect(view.database).toContainText("The API can run queries against the database.");
@@ -164,7 +163,7 @@ test.describe("a healthy API", () => {
     await expectState(view, "Operational", { api: "Up", database: "Reachable" });
     await expect(view.refresh).toHaveText("Refresh");
     await expect(view.refresh).toBeEnabled();
-    await expect(view.checked).toContainText(/^Last checked \d{2}:\d{2}:\d{2} UTC\./);
+    await expect(view.checked).toContainText(/^Last checked \d{2}:\d{2}:\d{2} (AM|PM) IST\./);
   });
 
   test("Refresh asks again, says it is working and moves the time on", async ({ page }) => {
@@ -173,7 +172,7 @@ test.describe("a healthy API", () => {
     const ready = countRequests(page, READY);
     const view = await openStatus(page);
     await expectState(view, "Operational", { api: "Up", database: "Reachable" });
-    await expect(view.checked).toContainText("Last checked 05:06:07 UTC.");
+    await expect(view.checked).toContainText("Last checked 10:36:07 AM IST.");
 
     const before = { health: health.count, ready: ready.count };
     const gate = await hold(page, CHECKS);
@@ -190,7 +189,7 @@ test.describe("a healthy API", () => {
     gate.release();
     await expect(view.refresh).toHaveText("Refresh");
     await expect(view.refresh).toBeEnabled();
-    await expect(view.checked).toContainText("Last checked 05:07:09 UTC.");
+    await expect(view.checked).toContainText("Last checked 10:37:09 AM IST.");
     expect(health.count).toBe(before.health + 1);
     expect(ready.count).toBe(before.ready + 1);
   });
@@ -315,7 +314,7 @@ test.describe("when something is wrong", () => {
     await expect(view.api).toContainText(UNREACHABLE);
     await expect(view.database).toContainText(UNREACHABLE);
     // A failed check is still a check, and can be repeated.
-    await expect(view.checked).toContainText(/^Last checked \d{2}:\d{2}:\d{2} UTC\./);
+    await expect(view.checked).toContainText(/^Last checked \d{2}:\d{2}:\d{2} (AM|PM) IST\./);
     await expect(view.refresh).toBeEnabled();
   });
 

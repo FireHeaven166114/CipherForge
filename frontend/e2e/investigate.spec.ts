@@ -19,6 +19,8 @@ const INVESTIGATE = /\/api\/v1\/intel\/investigate$/;
 const OPEN_QUOTE = "\u201c";
 const CLOSE_QUOTE = "\u201d";
 const SAVED = "This result is saved. You can return to it from the Indicators page.";
+const EMPTY_FILE_MD5 = "d41d8cd98f00b204e9800998ecf8427e";
+const EMPTY_FILE_SHA1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709";
 const EMPTY_FILE_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 // Numbers appear at once instead of counting up, so the page can be compared with the API.
@@ -95,8 +97,10 @@ test.describe("the form", () => {
 
     await expect(page).toHaveTitle("Investigate \u00b7 CipherForge");
     await expect(field).toHaveValue("");
-    await expect(field).toHaveAttribute("placeholder", "8.8.8.8, example.com, https://example.com/path or a SHA-256 hash");
-    await expect(field).toHaveAccessibleDescription(/IPv4, IPv6, domain, URL or SHA-256\. Surrounding spaces are ignored\./);
+    await expect(field).toHaveAttribute("placeholder", "8.8.8.8, example.com, https://example.com/path or a file hash");
+    await expect(field).toHaveAccessibleDescription(
+      /IPv4, IPv6, domain, URL, or an MD5, SHA-1 or SHA-256 file hash\. Surrounding spaces are ignored\./,
+    );
     await expect(again).not.toBeChecked();
     await expect(send).toBeEnabled();
     await expect(page.getByText(/^Before you send:/)).toBeVisible();
@@ -132,6 +136,9 @@ test.describe("the form", () => {
       ["example.com", "Domain"],
       ["EXAMPLE.COM", "Domain"],
       ["https://example.com/path", "URL"],
+      [EMPTY_FILE_MD5, "MD5"],
+      [EMPTY_FILE_MD5.toUpperCase(), "MD5"],
+      [EMPTY_FILE_SHA1, "SHA-1"],
       [EMPTY_FILE_SHA256, "SHA-256"],
       [EMPTY_FILE_SHA256.toUpperCase(), "SHA-256"],
       ["999.1.1.1", null],
@@ -155,6 +162,8 @@ test.describe("the form", () => {
       { name: "IPv4 8.8.8.8", value: "8.8.8.8", hint: "IPv4" },
       { name: "Domain example.com", value: "example.com", hint: "Domain" },
       { name: "URL https://example.com/path", value: "https://example.com/path", hint: "URL" },
+      { name: "MD5 d41d8cd9\u2026", value: EMPTY_FILE_MD5, hint: "MD5" },
+      { name: "SHA-1 da39a3ee\u2026", value: EMPTY_FILE_SHA1, hint: "SHA-1" },
       { name: "SHA-256 e3b0c442\u2026", value: EMPTY_FILE_SHA256, hint: "SHA-256" },
     ];
     await expect(examples.getByRole("button")).toHaveCount(chips.length);
@@ -199,7 +208,7 @@ test.describe("the form", () => {
 
     await field.focus();
     await page.keyboard.type(value);
-    for (const chip of ["IPv4", "Domain", "URL", "SHA-256"]) {
+    for (const chip of ["IPv4", "Domain", "URL", "MD5", "SHA-1", "SHA-256"]) {
       await page.keyboard.press("Tab");
       await expect(examples.getByRole("button", { name: new RegExp(`^${chip} `) })).toBeFocused();
     }
@@ -223,6 +232,8 @@ test.describe("a lookup", () => {
     { name: "an IPv6 address", make: fresh.ipv6, hint: "IPv6", queriedByAbuseIpdb: true },
     { name: "a domain", make: fresh.domain, hint: "Domain", queriedByAbuseIpdb: false },
     { name: "a URL", make: fresh.url, hint: "URL", queriedByAbuseIpdb: false },
+    { name: "an MD5 hash", make: fresh.md5, hint: "MD5", queriedByAbuseIpdb: false },
+    { name: "a SHA-1 hash", make: fresh.sha1, hint: "SHA-1", queriedByAbuseIpdb: false },
     { name: "a SHA-256 hash", make: fresh.sha256, hint: "SHA-256", queriedByAbuseIpdb: false },
   ] as const;
 
@@ -363,9 +374,16 @@ test.describe("a lookup", () => {
 });
 
 test.describe("what the providers can say", () => {
+  // Domains are not AbuseIPDB's to answer, so the three providers that take them all fail alike.
   const FAILING = [
-    { marker: "rate-limit", status: "rate_limited", label: "Rate limited" },
-    { marker: "provider-error", status: "error", label: "Error" },
+    { marker: "rate-limit", status: "rate_limited", label: "Rate limited", reason: "rate_limited" },
+    { marker: "provider-error", status: "error", label: "Error", reason: "unavailable" },
+  ] as const;
+  const REASON_TEXT = { rate_limited: "Rate limited", unavailable: "Provider unavailable" } as const;
+  const ASKED = [
+    ["otx", "AlienVault OTX"],
+    ["virustotal", "VirusTotal"],
+    ["threatfox", "ThreatFox"],
   ] as const;
 
   for (const failing of FAILING) {
@@ -376,13 +394,19 @@ test.describe("what the providers can say", () => {
       await expect(saved).toBeVisible();
 
       // The lookup reports the failure itself; only answers are stored, so the saved record differs.
-      const otx = must(answer.providers.find((p) => p.provider === "otx"), "the OTX answer");
-      expect(otx.status).toBe(failing.status);
       expect(answer.score.answered_sources, "no provider answered").toBe(0);
-
       await expectDossier(page, answer);
-      await expect(providerCard(page, "AlienVault OTX")).toContainText(failing.label);
-      await expect(providerCard(page, "AlienVault OTX")).toContainText(must(otx.message));
+      for (const [name, displayName] of ASKED) {
+        const provider = must(answer.providers.find((p) => p.provider === name), `the ${displayName} answer`);
+        expect(provider.status).toBe(failing.status);
+        expect(provider.reason).toBe(failing.reason);
+        const card = providerCard(page, displayName);
+        await expect(card).toContainText(failing.label);
+        await expect(card).toContainText(REASON_TEXT[failing.reason]);
+        await expect(card).toContainText(must(provider.message));
+        await expect(card).toContainText("Lookup attempted");
+        await expect(card.getByRole("button", { name: `Retry ${displayName}` })).toBeVisible();
+      }
       await expect(page.getByRole("status").filter({ hasText: announcement(answer) })).toBeAttached();
       await expect(panel(page, "CipherForge assessment")).toContainText("This is not a clean result");
 
@@ -393,6 +417,42 @@ test.describe("what the providers can say", () => {
       await expectDossier(page, stored);
     });
   }
+
+  test("Retry asks the providers again without forcing a refresh, and replaces the result", async ({ page }) => {
+    const value = `rate-limit-${uniqueSuffix()}.example.net`;
+    const { saved } = await openScanner(page);
+    const first = await lookup(page, value);
+    await expect(saved).toBeVisible();
+    expect(first.answer.score.answered_sources).toBe(0);
+
+    const again = page.waitForResponse((response) => isLookup(response.request()));
+    await providerCard(page, "VirusTotal").getByRole("button", { name: "Retry VirusTotal" }).click();
+    const retried = await again;
+    expect(retried.request().postDataJSON()).toEqual({ indicator: value, refresh: false });
+    const answer = (await retried.json()) as Investigation;
+    expect(answer.indicator.indicator_id).toBe(first.answer.indicator.indicator_id);
+    await expectDossier(page, answer);
+    await expect(providerCard(page, "VirusTotal").getByRole("button", { name: "Retry VirusTotal" })).toBeVisible();
+  });
+
+  test("an answer from VirusTotal and ThreatFox is shown with the provider's own verdict and no Retry", async ({
+    page,
+  }) => {
+    const { saved } = await openScanner(page);
+    const { answer } = await lookup(page, fresh.ipv6());
+    await expect(saved).toBeVisible();
+    // expectDossier checks each card's status, verdict and failure reason against the API.
+    await expectDossier(page, answer);
+
+    for (const name of ["virustotal", "threatfox"]) {
+      const provider = must(answer.providers.find((p) => p.provider === name), name);
+      const card = providerCard(page, provider.display_name);
+      await expect(card).toBeVisible();
+      if (provider.status === "ok") {
+        await expect(card.getByRole("button", { name: /^Retry / })).toHaveCount(0);
+      }
+    }
+  });
 });
 
 test.describe("when the lookup is refused or fails", () => {
@@ -605,7 +665,9 @@ test.describe("from the command palette", () => {
     let calls = 0;
     await page.route(INVESTIGATE, async (route) => {
       calls += 1;
-      if (calls === 1) await pause(2_000);
+      // The second lookup is held as well, so the page is still waiting when the test looks for the
+      // "Asking the providers" text; it is held for less time than the first, which comes back late.
+      await pause(calls === 1 ? 2_000 : 800);
       await route.continue().catch(() => undefined);
     });
     const { field, send, working, saved } = await openScanner(page);

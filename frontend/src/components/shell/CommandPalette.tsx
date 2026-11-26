@@ -87,7 +87,8 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
           <Kbd>Esc</Kbd>
         </span>
       </div>
-      <ul id={listId} role="listbox" aria-label="Commands" className="max-h-80 overflow-y-auto p-2">
+      {/* Leaves room for the 10vh gap above the dialog, the search row and the footer, so a short window scrolls the list instead of pushing the dialog off the screen. */}
+      <ul id={listId} role="listbox" aria-label="Commands" className="max-h-[min(20rem,calc(90dvh-6.5rem))] overflow-y-auto p-2">
         {items.map((item, index) => (
           <li
             key={item.id}

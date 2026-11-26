@@ -1,8 +1,9 @@
 import { Link } from "react-router";
 
 import { CLASSIFICATION_META, isIndicatorAssessed } from "../../features/intel/classification";
-import { formatRelative, formatUtc, parseTimestamp } from "../../features/intel/format";
+import { formatRelative } from "../../features/intel/format";
 import { INDICATOR_TYPE_LABELS } from "../../features/intel/labels";
+import { formatIst, parseTimestamp } from "../../features/time/ist";
 import { useNow } from "../../hooks/useNow";
 import type { Indicator } from "../../types/intel";
 import ClassificationBadge from "../intel/ClassificationBadge";
@@ -19,7 +20,7 @@ function CheckedAgo({ value }: { value: string | null }) {
   const date = parseTimestamp(value);
   if (date === null) return <span>Never checked</span>;
   return (
-    <time dateTime={date.toISOString()} title={formatUtc(date)}>
+    <time dateTime={date.toISOString()} title={formatIst(date)}>
       {formatRelative(date, now)}
     </time>
   );

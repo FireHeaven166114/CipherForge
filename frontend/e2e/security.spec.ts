@@ -155,6 +155,10 @@ function readNginx(): Directive[] {
 test.describe("nginx.conf", () => {
   const directives = readNginx();
   const named = (name: string): Directive[] => directives.filter((directive) => directive.name === name);
+  // The upload location has to come first: nginx uses the first regular expression that matches.
+  const UPLOAD_LOCATION = "location ~ ^/api/v1/(?:files|network/pcap)$";
+  const API_LOCATION = "location ~ ^/(?:api/|health$|ready$)";
+  const where = (found: Directive[]): (string | null)[][] => found.map((directive) => [directive.location, directive.args]);
 
   test("declares the six security headers once, at server level, on every response", () => {
     const headers = named("add_header");
@@ -175,9 +179,45 @@ test.describe("nginx.conf", () => {
     }
   });
 
-  test("hides the server version and limits request bodies", () => {
+  test("hides the server version and keeps request bodies small except for the two uploads", () => {
     expect(named("server_tokens").map((directive) => directive.args)).toEqual(["off"]);
-    expect(named("client_max_body_size").map((directive) => directive.args)).toEqual(["64k"]);
+    expect(where(named("client_max_body_size"))).toEqual([
+      [null, "64k"],
+      [UPLOAD_LOCATION, "500m"],
+    ]);
+    // A body up to the limit stays in memory: a share password is never written to a temporary file.
+    expect(where(named("client_body_buffer_size"))).toEqual([[null, "64k"]]);
+  });
+
+  test("passes uploads on as they arrive, so the backend can refuse one before it is sent", () => {
+    expect(where(named("proxy_request_buffering"))).toEqual([[UPLOAD_LOCATION, "off"]]);
+  });
+
+  test("never writes a proxied answer to a temporary file, so a shared file is not spooled to disk", () => {
+    expect(where(named("proxy_max_temp_file_size"))).toEqual([
+      [UPLOAD_LOCATION, "0"],
+      [API_LOCATION, "0"],
+    ]);
+  });
+
+  test("keeps the secret in a share link out of the access log", () => {
+    const redactions = directives.filter((directive) => directive.name.startsWith("~^/"));
+    expect(redactions.map((directive) => [directive.name, directive.args])).toEqual([
+      ["~^/share/", '"/share/[redacted]"'],
+      ["~^/api/v1/shares/", '"/api/v1/shares/[redacted]"'],
+    ]);
+
+    const [format, ...others] = named("log_format");
+    expect(others, "one log format").toEqual([]);
+    expect(format?.args).toContain("$logged_uri");
+    // These variables carry the whole path, token included.
+    expect(format?.args).not.toMatch(/\$(?:request|request_uri|uri|document_uri)(?![A-Za-z0-9_])/);
+
+    const logs = named("access_log");
+    expect(logs.find((directive) => directive.location === null)?.args.split(" ")).toEqual([
+      "/var/log/nginx/access.log",
+      format?.args.split(" ")[0],
+    ]);
   });
 
   test("compresses only the static build files, never API answers", () => {
@@ -188,11 +228,15 @@ test.describe("nginx.conf", () => {
 
   test("hands only the API and the health checks to the backend", () => {
     // e2e/harness/serve-dist.ts proxies the same paths; change both together.
-    const proxies = named("proxy_pass");
-    expect(proxies).toHaveLength(1);
-    expect(proxies[0]?.location).toBe("location ~ ^/(?:api/|health$|ready$)");
-    const hidden = named("proxy_hide_header").map((directive) => directive.args);
-    expect(hidden.sort()).toEqual(["Referrer-Policy", "X-Content-Type-Options", "X-Frame-Options"]);
+    expect(named("proxy_pass").map((directive) => directive.location)).toEqual([UPLOAD_LOCATION, API_LOCATION]);
+    const hidden = named("proxy_hide_header");
+    for (const location of [UPLOAD_LOCATION, API_LOCATION]) {
+      expect(
+        hidden.filter((directive) => directive.location === location).map((directive) => directive.args).sort(),
+        location,
+      ).toEqual(["Referrer-Policy", "X-Content-Type-Options", "X-Frame-Options"]);
+    }
+    expect(hidden).toHaveLength(6);
   });
 
   test("answers a missing build file with a 404 instead of the app", () => {
@@ -784,6 +828,9 @@ test.describe("the build output", () => {
       ["www.w3.org", "SVG and MathML namespaces"],
       ["attack.mitre.org", "technique links"],
       ["otx.alienvault.com", "pulse links"],
+      ["www.virustotal.com", "VirusTotal report links"],
+      ["threatfox.abuse.ch", "ThreatFox record links"],
+      ["malpedia.caad.fkie.fraunhofer.de", "Malpedia entry links"],
       ["example.com", "the example indicator"],
       ["react.dev", "React error pages"],
       ["reactrouter.com", "React Router error pages"],

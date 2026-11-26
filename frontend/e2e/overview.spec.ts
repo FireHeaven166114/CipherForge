@@ -12,7 +12,7 @@ import {
 } from "./api";
 import { expect, test } from "./fixtures";
 import { chosenClassification, expectFound, panel } from "./pages";
-import { bandOf, escapeRegExp, exactly, hourText, longDay, must, share, sum, trendText } from "./text";
+import { bandOf, escapeRegExp, exactly, hourText, istClockSeconds, longDay, must, share, sum, trendText } from "./text";
 
 const OVERVIEW_URL = "**/api/v1/intel/overview";
 const OVERVIEW_REQUEST = /\/api\/v1\/intel\/overview$/;
@@ -175,9 +175,9 @@ test.describe("page structure", () => {
   test("shows when the figures were fetched and what period each one covers", async ({ page, request }) => {
     const { scope } = await fetchOverview(request);
     await openOverview(page);
-    await expect(page.getByText(/Live · refreshed \d{2}:\d{2}:\d{2} UTC/)).toBeVisible();
+    await expect(page.getByText(/Live · refreshed \d{2}:\d{2}:\d{2} (AM|PM) IST/)).toBeVisible();
     await expect(page.getByText("Counts and risk bands cover every stored indicator.")).toContainText(
-      `Trends cover the last ${scope.series_days} days and hourly activity the last ${scope.activity_days}, all in UTC.`,
+      `Trends cover the last ${scope.series_days} days and hourly activity the last ${scope.activity_days}, all in IST.`,
     );
   });
 });
@@ -528,9 +528,9 @@ test.describe("indicator mix", () => {
     await openOverview(page);
 
     const links = page.getByRole("group", { name: "Indicators by type", exact: true }).getByRole("link");
-    await expect(links).toHaveCount(5);
+    await expect(links).toHaveCount(7);
     const known = new Set(matrix.map((row) => row.indicator_type));
-    expect(known.size).toBe(5);
+    expect(known.size).toBe(7);
     for (const type of known) {
       const link = page.getByRole("link", { name: `${TYPE_LABELS[type]}: ${countOf(types[type] ?? 0)}`, exact: true });
       await expect(link).toHaveAttribute("href", `/indicators?type=${type}`);
@@ -552,7 +552,7 @@ test.describe("lookup activity", () => {
     const { activity } = await fetchOverview(request);
     await openOverview(page);
 
-    const table = page.getByRole("table", { name: "Lookups per day, with the busiest hour (UTC)" });
+    const table = page.getByRole("table", { name: "Lookups per day, with the busiest hour (IST)" });
     await expect(table.locator("thead th")).toHaveText(["Day", "Lookups", "Busiest hour"]);
     const rows = await table
       .locator("tbody tr")
@@ -563,7 +563,7 @@ test.describe("lookup activity", () => {
         return [
           longDay(row.day),
           String(sum(row.hours)),
-          peak === 0 ? "None" : `${hourText(row.hours.indexOf(peak))} UTC (${peak})`,
+          peak === 0 ? "None" : `${hourText(row.hours.indexOf(peak))} IST (${peak})`,
         ];
       }),
     );
@@ -579,12 +579,12 @@ test.describe("lookup activity", () => {
     const peak = Math.max(...activity.flatMap((row) => row.hours));
     const day = must(activity.find((row) => row.hours.includes(peak)));
     const hour = day.hours.indexOf(peak);
-    const title = `${longDay(day.day)}, ${hourText(hour)} UTC: ${peak} ${peak === 1 ? "lookup" : "lookups"}`;
+    const title = `${longDay(day.day)}, ${hourText(hour)} IST: ${peak} ${peak === 1 ? "lookup" : "lookups"}`;
     await expect(cells.filter({ has: page.locator("title", { hasText: exactly(title) }) })).toHaveAttribute("fill-opacity", "1");
 
     const quiet = must(activity.find((row) => row.hours.includes(0)));
     const quietHour = quiet.hours.indexOf(0);
-    const quietTitle = `${longDay(quiet.day)}, ${hourText(quietHour)} UTC: 0 lookups`;
+    const quietTitle = `${longDay(quiet.day)}, ${hourText(quietHour)} IST: 0 lookups`;
     await expect(cells.filter({ has: page.locator("title", { hasText: exactly(quietTitle) }) })).toHaveAttribute("fill-opacity", "0.07");
   });
 });
@@ -607,7 +607,8 @@ test.describe("providers and modules", () => {
     );
   });
 
-  test("warns when no provider is configured", async ({ page }) => {
+  test("warns when no provider is configured", async ({ page, request }) => {
+    const { providers: known } = await fetchOverview(request);
     await serveOverview(page, (overview) => ({
       ...overview,
       providers: overview.providers.map((provider) => ({ ...provider, configured: false, simulated: false })),
@@ -617,7 +618,11 @@ test.describe("providers and modules", () => {
     const providers = panel(page, "Intelligence providers");
     await expect(providers.getByRole("note")).toContainText("No threat-intelligence provider is configured");
     await expect(providers.getByRole("note")).toContainText("Not assessed");
-    await expect(providers.getByRole("listitem")).toContainText(["Not configured", "Not configured"]);
+    const items = providers.getByRole("listitem");
+    await expect(items).toHaveCount(known.length);
+    for (let index = 0; index < known.length; index += 1) {
+      await expect(items.nth(index)).toContainText("Not configured");
+    }
   });
 
   test("does not call a real provider simulated", async ({ page }) => {
@@ -633,16 +638,16 @@ test.describe("providers and modules", () => {
     await expect(providers.getByRole("note")).toHaveCount(0);
   });
 
-  test("mark threat intelligence live and everything else planned", async ({ page }) => {
+  test("mark the built modules live and the rest planned", async ({ page }) => {
     await openOverview(page);
 
     const modules = panel(page, "Platform modules").getByRole("listitem");
     await expect(modules).toHaveCount(5);
     const states: Record<string, string> = {
       "Threat intelligence": "Live",
-      "Network monitoring": "Planned",
+      "Network monitoring": "Live",
       "Incident management": "Planned",
-      "Secure file sharing": "Planned",
+      "Secure file sharing": "Live",
       Administration: "Planned",
     };
     for (const [name, state] of Object.entries(states)) {
@@ -684,7 +689,10 @@ test.describe("highest risk and latest investigations", () => {
         await expect(item).toContainText(TYPE_LABELS[indicator.indicator_type]);
         await expect(item).toContainText(assessed ? CLASSIFICATION_LABELS[indicator.classification] : "Not assessed");
         await expect(item).toContainText(assessed ? `Score ${indicator.risk_score}` : "No score");
-        await expect(item.locator("time")).toHaveAttribute("title", /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/);
+        await expect(item.locator("time")).toHaveAttribute(
+          "title",
+          /^\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2} (AM|PM) IST$/,
+        );
       }
 
       await panel(page, title).getByRole("link", { name: more }).click();
@@ -1029,11 +1037,8 @@ test.describe("keeping up to date", () => {
     await page.clock.install();
     const requests = countRequests(page, OVERVIEW_REQUEST);
     await openOverview(page);
-    const stamp = async (): Promise<number> => {
-      const text = await page.getByText(/refreshed \d{2}:\d{2}:\d{2} UTC/).textContent();
-      const [hours, minutes, seconds] = must(/(\d{2}):(\d{2}):(\d{2})/.exec(must(text))).slice(1).map(Number);
-      return must(hours) * 3600 + must(minutes) * 60 + must(seconds);
-    };
+    const stamp = async (): Promise<number> =>
+      istClockSeconds(must(await page.getByText(/refreshed \d{2}:\d{2}:\d{2} (AM|PM) IST/).textContent()));
     const before = await stamp();
     expect(requests.count).toBe(1);
 
@@ -1064,7 +1069,7 @@ test.describe("keeping up to date", () => {
     await page.getByRole("button", { name: "Refresh" }).click();
     const alert = page.getByRole("main").getByRole("alert");
     await expect(alert).toContainText("The overview could not be refreshed. The figures below are from");
-    await expect(page.getByText(/Stale · refreshed \d{2}:\d{2}:\d{2} UTC/)).toBeVisible();
+    await expect(page.getByText(/Stale · refreshed \d{2}:\d{2}:\d{2} (AM|PM) IST/)).toBeVisible();
     await expect(tile, "the old figures stay").toHaveAccessibleName(
       new RegExp(`^Indicators tracked ${kpis.total_indicators.toLocaleString("en-US")}`),
     );
@@ -1073,7 +1078,7 @@ test.describe("keeping up to date", () => {
     failing = false;
     await page.getByRole("button", { name: "Refresh" }).click();
     await expect(alert).toBeHidden();
-    await expect(page.getByText(/Live · refreshed \d{2}:\d{2}:\d{2} UTC/)).toBeVisible();
+    await expect(page.getByText(/Live · refreshed \d{2}:\d{2}:\d{2} (AM|PM) IST/)).toBeVisible();
   });
 
   test("shows a loading note and placeholders until the first answer", async ({ page }) => {

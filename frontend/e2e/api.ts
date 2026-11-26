@@ -10,7 +10,9 @@ import type {
   IndicatorType,
   Investigation,
   Overview,
+  ProviderReason,
   ProviderStatus,
+  ProviderVerdict,
 } from "../src/types/intel";
 
 /** The words the console prints, written out here so a wrong label in the app fails a test. */
@@ -27,6 +29,8 @@ export const TYPE_LABELS: Record<IndicatorType, string> = {
   ipv6: "IPv6",
   domain: "Domain",
   url: "URL",
+  md5: "MD5",
+  sha1: "SHA-1",
   sha256: "SHA-256",
 };
 
@@ -40,13 +44,33 @@ export const PROVIDER_STATUS_LABELS: Record<ProviderStatus, string> = {
   not_queried: "Not queried",
 };
 
+/** What a provider itself concluded. "Harmless" and "Not found" are never shown as a safe result. */
+export const PROVIDER_VERDICT_LABELS: Record<ProviderVerdict, string> = {
+  malicious: "Malicious",
+  suspicious: "Suspicious",
+  harmless: "Harmless",
+  unknown: "Unknown",
+  not_found: "Not found",
+};
+
+/** Why a lookup gave no answer, as the card words it next to the status. */
+export const PROVIDER_REASON_LABELS: Record<ProviderReason, string> = {
+  not_configured: "Not configured",
+  invalid_input: "Invalid input",
+  auth_failed: "Authentication failure",
+  rate_limited: "Rate limited",
+  timeout: "Timeout",
+  unavailable: "Provider unavailable",
+  malformed_response: "Malformed response",
+};
+
 export function countOf(count: number, noun = "indicator"): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /** Most to least severe, the order the risk-band list uses. */
 export const CLASSIFICATION_ORDER = ["critical", "high", "medium", "low", "informational"] as const;
-export const TYPE_ORDER = ["ipv4", "ipv6", "domain", "url", "sha256"] as const;
+export const TYPE_ORDER = ["ipv4", "ipv6", "domain", "url", "md5", "sha1", "sha256"] as const;
 
 /**
  * Reads of the API, made through the same front door as the browser. The specs use them as an
@@ -115,6 +139,8 @@ export const fresh = {
   ipv6: (): string => `2100:${hextet()}:${hextet()}::${hextet()}`,
   domain: (): string => `e2e-${uniqueSuffix()}.example.net`,
   url: (): string => `https://e2e-${uniqueSuffix()}.example.net/path/${uniqueSuffix()}`,
+  md5: (): string => createHash("md5").update(randomBytes(16)).digest("hex"),
+  sha1: (): string => createHash("sha1").update(randomBytes(16)).digest("hex"),
   sha256: (): string => createHash("sha256").update(randomBytes(16)).digest("hex"),
 } as const;
 

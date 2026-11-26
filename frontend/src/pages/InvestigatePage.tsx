@@ -29,7 +29,17 @@ const EXAMPLES: readonly Example[] = [
   { label: "IPv4", value: "8.8.8.8" },
   { label: "Domain", value: "example.com" },
   { label: "URL", value: "https://example.com/path" },
-  // The SHA-256 of an empty file.
+  // The MD5, SHA-1 and SHA-256 of an empty file.
+  {
+    label: "MD5",
+    value: "d41d8cd98f00b204e9800998ecf8427e",
+    preview: "d41d8cd9…",
+  },
+  {
+    label: "SHA-1",
+    value: "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+    preview: "da39a3ee…",
+  },
   {
     label: "SHA-256",
     value: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -140,7 +150,7 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                placeholder="8.8.8.8, example.com, https://example.com/path or a SHA-256 hash"
+                placeholder="8.8.8.8, example.com, https://example.com/path or a file hash"
                 aria-invalid={problem !== null}
                 aria-describedby={problem === null ? helpId : `${helpId} ${problemId}`}
                 className="min-w-0 flex-1 bg-transparent px-3 py-3 font-mono text-base text-ink-50 outline-hidden placeholder:text-ink-300"
@@ -153,8 +163,8 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
               ) : null}
             </div>
             <p id={helpId} className="mt-2 text-xs text-ink-300">
-              IPv4, IPv6, domain, URL or SHA-256. Surrounding spaces are ignored. Private, reserved
-              and internal addresses and names are not looked up.
+              IPv4, IPv6, domain, URL, or an MD5, SHA-1 or SHA-256 file hash. Surrounding spaces are
+              ignored. Private, reserved and internal addresses and names are not looked up.
             </p>
             {problem !== null ? (
               <p id={problemId} role="alert" className="mt-2 text-sm font-medium text-bad">
@@ -235,7 +245,10 @@ function Scanner({ intent }: { intent: InvestigateIntent | null }) {
               <span aria-hidden="true">→</span>
             </Link>
           </div>
-          <InvestigationView investigation={state.investigation} />
+          <InvestigationView
+            investigation={state.investigation}
+            onRetry={() => run(state.investigation.indicator.indicator_value, false)}
+          />
         </div>
       ) : null}
     </div>

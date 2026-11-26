@@ -14,9 +14,17 @@ const MODULES: readonly Module[] = [
     summary: "Investigate IPs, domains, URLs and hashes; score and store the results.",
     live: true,
   },
-  { name: "Network monitoring", summary: "Flow and sensor data from your own network.", live: false },
+  {
+    name: "Network monitoring",
+    summary: "Capture live traffic or analyse a PCAP; flows and detection alerts.",
+    live: true,
+  },
   { name: "Incident management", summary: "Cases, ownership and response workflow.", live: false },
-  { name: "Secure file sharing", summary: "End-to-end encrypted sharing between analysts.", live: false },
+  {
+    name: "Secure file sharing",
+    summary: "Encrypted storage and expiring, revocable download links.",
+    live: true,
+  },
   { name: "Administration", summary: "Users, roles and audit review.", live: false },
 ];
 

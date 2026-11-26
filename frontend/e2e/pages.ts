@@ -1,7 +1,14 @@
 import type { Locator, Page } from "@playwright/test";
 
 import type { Investigation } from "../src/types/intel";
-import { CLASSIFICATION_LABELS, PROVIDER_STATUS_LABELS, TYPE_LABELS, countOf } from "./api";
+import {
+  CLASSIFICATION_LABELS,
+  PROVIDER_REASON_LABELS,
+  PROVIDER_STATUS_LABELS,
+  PROVIDER_VERDICT_LABELS,
+  TYPE_LABELS,
+  countOf,
+} from "./api";
 import { expect } from "./fixtures";
 import { escapeRegExp } from "./text";
 
@@ -75,9 +82,14 @@ export async function expectDossier(page: Page, dossier: Investigation): Promise
   }
 
   for (const provider of providers) {
-    await expect(providerCard(page, provider.display_name).locator("header")).toContainText(
-      PROVIDER_STATUS_LABELS[provider.status],
-    );
+    const header = providerCard(page, provider.display_name).locator("header");
+    await expect(header).toContainText(PROVIDER_STATUS_LABELS[provider.status]);
+    if (provider.verdict !== null) {
+      await expect(header).toContainText(PROVIDER_VERDICT_LABELS[provider.verdict]);
+    }
+    if (provider.reason !== null) {
+      await expect(header).toContainText(PROVIDER_REASON_LABELS[provider.reason]);
+    }
   }
 }
 

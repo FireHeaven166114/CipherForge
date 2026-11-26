@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  makeFailedProvider,
   makeIndicator,
   makeInvestigation,
   makeNotAssessed,
   makeOverview,
   makePage,
   makeStats,
+  makeThreatFox,
+  makeVirusTotal,
 } from "../test/fixtures";
+import { PROVIDER_REASONS, PROVIDER_VERDICTS } from "../types/intel";
 import {
   isDeleteResult,
   isIndicator,
@@ -80,11 +84,29 @@ describe("isInvestigation", () => {
       { ...provider, signal: "0.5" },
       { ...provider, freshness: "old" },
       { ...provider, from_cache: "yes" },
+      without(provider as object, "verdict"),
+      without(provider as object, "reason"),
+      { ...provider, verdict: "safe" },
+      { ...provider, verdict: 3 },
+      { ...provider, reason: "bad_luck" },
+      { ...provider, reason: false },
     ];
 
     for (const value of broken) {
       expect(isInvestigation({ ...valid, providers: [value] })).toBe(false);
     }
+  });
+
+  it("accepts every verdict and failure reason the API can send, and a missing one as null", () => {
+    const valid = makeInvestigation();
+    for (const verdict of PROVIDER_VERDICTS) {
+      expect(isInvestigation({ ...valid, providers: [makeVirusTotal({ verdict })] })).toBe(true);
+    }
+    for (const reason of PROVIDER_REASONS) {
+      const failed = makeFailedProvider("virustotal", "VirusTotal", "error", reason, "No answer.");
+      expect(isInvestigation({ ...valid, providers: [failed] })).toBe(true);
+    }
+    expect(isInvestigation({ ...valid, providers: [makeVirusTotal(), makeThreatFox()] })).toBe(true);
   });
 });
 

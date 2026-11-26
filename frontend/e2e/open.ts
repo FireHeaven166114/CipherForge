@@ -37,3 +37,16 @@ export async function openStatus(page: Page): Promise<void> {
   await page.goto("/status");
   await expect(page.getByText("Operational", { exact: true })).toBeVisible();
 }
+
+export async function openNetwork(page: Page, query = ""): Promise<void> {
+  await page.goto(`/network${query}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Network", exact: true })).toBeVisible();
+  await expect(panel(page, "Live capture")).toBeVisible();
+  await expect(page.getByText(/^Live · refreshed/)).toBeVisible();
+}
+
+export async function openFiles(page: Page): Promise<void> {
+  await page.goto("/files");
+  await expect(page.getByRole("heading", { level: 1, name: "Files", exact: true })).toBeVisible();
+  await expect(panel(page, "Your files")).toBeVisible();
+}

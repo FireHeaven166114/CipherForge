@@ -6,6 +6,8 @@ const GO_TO: Readonly<Record<string, string>> = {
   o: "/",
   i: "/investigate",
   l: "/indicators",
+  n: "/network",
+  f: "/files",
   s: "/status",
 };
 const SEQUENCE_WINDOW_MS = 1000;

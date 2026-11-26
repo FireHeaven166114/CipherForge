@@ -6,7 +6,7 @@ import { SearchIcon, SparkleIcon } from "../hud/Icons";
 import Kbd from "../hud/Kbd";
 import ApiBeacon from "./ApiBeacon";
 import IdentityChip from "./IdentityChip";
-import UtcClock from "./UtcClock";
+import IstClock from "./IstClock";
 
 function paletteKeys(): string {
   return /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "⌘ K" : "Ctrl K";
@@ -78,7 +78,7 @@ export default function TopBar({ onOpenPalette }: { onOpenPalette: () => void })
 
           <span className="hidden h-6 w-px shrink-0 bg-ink-700 @5xl:block" aria-hidden="true" />
           <span className="hidden shrink-0 whitespace-nowrap @5xl:block">
-            <UtcClock />
+            <IstClock />
           </span>
           <IdentityChip />
           <ApiBeacon />

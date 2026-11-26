@@ -75,18 +75,18 @@ describe("ActivityHeatmap", () => {
     const table = screen.getByRole("table", { name: /Lookups per day/ });
     const last = within(table).getByRole("row", { name: /Thu 14 May 2026/ });
     // The fixture puts 8 lookups in hour 09 and 1 in hour 14 on the last day.
-    expect(within(last).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["9", "09:00 UTC (8)"]);
+    expect(within(last).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["9", "09:00 IST (8)"]);
     expect(within(table).getAllByRole("row")).toHaveLength(8);
   });
 
-  it("titles every cell with the day, the UTC hour and the count", () => {
+  it("titles every cell with the day, the IST hour and the count", () => {
     const { container } = render(<ActivityHeatmap rows={makeOverview().activity} />);
 
     const titles = Array.from(container.querySelectorAll("rect > title")).map((title) => title.textContent);
     expect(titles).toHaveLength(7 * 24);
-    expect(titles).toContain("Thu 14 May 2026, 09:00 UTC: 8 lookups");
-    expect(titles).toContain("Thu 14 May 2026, 14:00 UTC: 1 lookup");
-    expect(titles).toContain("Thu 14 May 2026, 03:00 UTC: 0 lookups");
+    expect(titles).toContain("Thu 14 May 2026, 09:00 IST: 8 lookups");
+    expect(titles).toContain("Thu 14 May 2026, 14:00 IST: 1 lookup");
+    expect(titles).toContain("Thu 14 May 2026, 03:00 IST: 0 lookups");
   });
 
   it("says 'None' for a day without lookups", () => {

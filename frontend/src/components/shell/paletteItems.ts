@@ -29,6 +29,20 @@ const PAGES = [
     words: "list table ioc stored",
   },
   {
+    id: "go-network",
+    label: "Go to Network",
+    hint: "G then N",
+    to: "/network",
+    words: "monitoring capture packets pcap traffic flows",
+  },
+  {
+    id: "go-files",
+    label: "Go to Files",
+    hint: "G then F",
+    to: "/files",
+    words: "encrypted share upload download link secure",
+  },
+  {
     id: "go-status",
     label: "Go to System status",
     hint: "G then S",

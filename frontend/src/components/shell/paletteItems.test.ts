@@ -9,8 +9,16 @@ function ids(query: string, effects = EFFECTS_ON): string[] {
 }
 
 describe("buildPaletteItems", () => {
-  it("offers the four pages and the effects switch when nothing is typed", () => {
-    expect(ids("")).toEqual(["go-overview", "go-investigate", "go-indicators", "go-status", "effects"]);
+  it("offers every page and the effects switch when nothing is typed", () => {
+    expect(ids("")).toEqual([
+      "go-overview",
+      "go-investigate",
+      "go-indicators",
+      "go-network",
+      "go-files",
+      "go-status",
+      "effects",
+    ]);
   });
 
   it("offers to investigate or search for anything typed, ahead of the pages", () => {
@@ -33,6 +41,9 @@ describe("buildPaletteItems", () => {
     expect(ids("health")).toContain("go-status");
     expect(ids("go to status")).toContain("go-status");
     expect(ids("go to status")).not.toContain("go-overview");
+    expect(ids("pcap")).toContain("go-network");
+    expect(ids("encrypted share")).toContain("go-files");
+    expect(ids("encrypted share")).not.toContain("go-network");
   });
 
   it("words the effects switch by its current state, and hides it when reduced motion is requested", () => {

@@ -45,7 +45,7 @@ export function typeAxes(overview: Overview): RadarAxis[] {
   }));
 }
 
-/** Lookups and high-risk lookups per UTC day, for the trend chart. */
+/** Lookups and high-risk lookups per IST day, for the trend chart. */
 export function threatSeries(overview: Overview): { categories: string[]; series: AreaSeries[] } {
   return {
     categories: overview.series.map((point) => point.day),

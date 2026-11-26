@@ -35,6 +35,8 @@ describe("App", () => {
       "/",
       "/investigate",
       "/indicators",
+      "/network",
+      "/files",
       "/status",
     ]);
     expect(document.title).toBe("Overview · CipherForge");

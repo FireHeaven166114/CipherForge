@@ -12,6 +12,8 @@ const PAGES = [
   { path: "/", link: "Overview", heading: "Overview", title: "Overview" },
   { path: "/investigate", link: "Investigate", heading: "Investigate an indicator", title: "Investigate" },
   { path: "/indicators", link: "Indicators", heading: "Indicators", title: "Indicators" },
+  { path: "/network", link: "Network", heading: "Network", title: "Network" },
+  { path: "/files", link: "Files", heading: "Files", title: "Files" },
   { path: "/status", link: "System status", heading: "System status", title: "System status" },
 ] as const;
 
@@ -100,12 +102,12 @@ test.describe("pages and navigation", () => {
 });
 
 test.describe("top bar", () => {
-  test("shows a ticking UTC clock, the caller's role and the API state", async ({ page, request }) => {
+  test("shows a ticking IST clock, the caller's role and the API state", async ({ page, request }) => {
     await page.goto("/");
     const bar = page.getByRole("banner");
     const clock = bar.locator("time");
 
-    await expect(clock).toHaveText(/^\d{2}:\d{2}:\d{2} UTC$/);
+    await expect(clock).toHaveText(/^\d{2}:\d{2}:\d{2} (AM|PM) IST$/);
     const first = await clock.textContent();
     await expect.poll(() => clock.textContent(), { timeout: 5_000 }).not.toBe(first);
 
@@ -182,6 +184,8 @@ test.describe("keyboard shortcuts", () => {
   for (const [letter, path, heading] of [
     ["i", "/investigate", "Investigate an indicator"],
     ["l", "/indicators", "Indicators"],
+    ["n", "/network", "Network"],
+    ["f", "/files", "Files"],
     ["s", "/status", "System status"],
     ["o", "/", "Overview"],
   ] as const) {
@@ -235,6 +239,8 @@ test.describe("command palette", () => {
       /^Go to Overview/,
       /^Go to Investigate/,
       /^Go to Indicators/,
+      /^Go to Network/,
+      /^Go to Files/,
       /^Go to System status/,
       /^Turn visual effects off/,
     ]);
@@ -259,10 +265,11 @@ test.describe("command palette", () => {
     await page.keyboard.press("ArrowUp");
     await page.keyboard.press("ArrowUp");
     await page.keyboard.press("ArrowUp");
-    await expect(options.nth(4)).toHaveAttribute("aria-selected", "true");
+    await expect(options.nth(6)).toHaveAttribute("aria-selected", "true");
 
-    await page.keyboard.press("ArrowUp");
-    await page.keyboard.press("ArrowUp");
+    // Four steps up from the last option: effects switch -> System status -> Files -> Network ->
+    // Indicators.
+    for (let press = 0; press < 4; press += 1) await page.keyboard.press("ArrowUp");
     await expect(options.nth(2)).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Enter");
 
@@ -290,7 +297,7 @@ test.describe("command palette", () => {
     await expect(options).toHaveText([/^Investigate/, /^Search indicators for/, /^Turn visual effects off/]);
 
     await box.fill("");
-    await expect(options).toHaveCount(5);
+    await expect(options).toHaveCount(7);
   });
 
   test("clicking an option runs it", async ({ page }) => {

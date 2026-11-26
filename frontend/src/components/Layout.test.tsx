@@ -152,6 +152,21 @@ describe("Command palette", () => {
     expect(await screen.findByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
   });
 
+  it("finds the Network and Files pages by name", async () => {
+    serveEverything();
+    const user = await ready();
+
+    await user.keyboard("{Control>}k{/Control}");
+    await user.type(screen.getByRole("combobox"), "network");
+    await user.click(screen.getByRole("option", { name: /Go to Network/ }));
+    expect(await screen.findByRole("heading", { name: "Network", level: 1 })).toBeInTheDocument();
+
+    await user.keyboard("{Control>}k{/Control}");
+    await user.type(screen.getByRole("combobox"), "files");
+    await user.click(screen.getByRole("option", { name: /Go to Files/ }));
+    expect(await screen.findByRole("heading", { name: "Files", level: 1 })).toBeInTheDocument();
+  });
+
   it("searches stored indicators for what was typed", async () => {
     serveEverything();
     const user = await ready();
@@ -175,6 +190,17 @@ describe("Keyboard shortcuts", () => {
 
     await user.keyboard("gs");
     expect(await screen.findByRole("heading", { name: "System status", level: 1 })).toBeInTheDocument();
+  });
+
+  it("goes to the Network and Files pages with G N and G F", async () => {
+    serveEverything();
+    const user = await ready();
+
+    await user.keyboard("gn");
+    expect(await screen.findByRole("heading", { name: "Network", level: 1 })).toBeInTheDocument();
+
+    await user.keyboard("gf");
+    expect(await screen.findByRole("heading", { name: "Files", level: 1 })).toBeInTheDocument();
   });
 
   it("leaves the keys alone while typing in a field", async () => {

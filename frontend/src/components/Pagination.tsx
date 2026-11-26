@@ -7,6 +7,8 @@ interface PaginationProps {
   total: number;
   /** The last page the API will serve, when it limits how deep results can be browsed. */
   maxPage?: number;
+  /** What a screen reader calls this navigation. Several lists on one screen each need a name of their own. */
+  label?: string;
   onPageChange: (page: number) => void;
 }
 
@@ -15,6 +17,7 @@ export default function Pagination({
   pageSize,
   total,
   maxPage = Number.POSITIVE_INFINITY,
+  label = "Pagination",
   onPageChange,
 }: PaginationProps) {
   if (total <= 0) return null;
@@ -25,7 +28,7 @@ export default function Pagination({
   const atLimit = page >= maxPage;
 
   return (
-    <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 text-sm">
+    <nav aria-label={label} className="flex flex-wrap items-center justify-between gap-3 text-sm">
       <p className="text-ink-200">
         Showing {first}–{last} of {total}
       </p>

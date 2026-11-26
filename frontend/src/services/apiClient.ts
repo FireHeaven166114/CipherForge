@@ -58,6 +58,11 @@ export interface RequestOptions<T> {
   acceptStatuses?: readonly number[];
   /** Runtime check for the response body; a mismatch becomes an `invalid_response` error. */
   guard?: (value: unknown) => value is T;
+  /**
+   * Set to false for endpoints that anyone holding a link may call. The bearer token is then
+   * never attached, so a signed-in analyst's credentials cannot reach a public endpoint.
+   */
+  authenticated?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -92,30 +97,29 @@ function invalidResponse(status: number, correlationId: string | undefined): Api
   });
 }
 
-export async function request<T>(path: string, options: RequestOptions<T> = {}): Promise<T> {
-  const {
-    method = "GET",
-    body,
-    signal,
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    acceptStatuses = [],
-    guard,
-  } = options;
+interface Transport {
+  method: string;
+  headers: Record<string, string>;
+  body?: BodyInit;
+  signal?: AbortSignal;
+  timeoutMs: number;
+  authenticated: boolean;
+}
 
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const token = tokenProvider ? await tokenProvider() : null;
-  if (token) headers.Authorization = `Bearer ${token}`;
+/** Adds the bearer token (when there is one and the endpoint wants it) and sends the request. */
+async function send(path: string, transport: Transport): Promise<Response> {
+  const { method, headers, body, signal, timeoutMs, authenticated } = transport;
+  const token = authenticated && tokenProvider ? await tokenProvider() : null;
+  const sent = token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
 
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
-  let response: Response;
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: sent,
+      body,
       signal: combinedSignal,
       cache: "no-store",
       credentials: "same-origin",
@@ -131,6 +135,42 @@ export async function request<T>(path: string, options: RequestOptions<T> = {}):
       code: "network_error",
     });
   }
+}
+
+/** Only the server's sanitised envelope is surfaced, never a raw response body. */
+function failureOf(response: Response, payload: unknown, correlationId: string | undefined): ApiError {
+  const envelope = isErrorEnvelope(payload) ? payload.error : undefined;
+  return new ApiError({
+    message: envelope?.message ?? `The API responded with HTTP ${response.status}.`,
+    status: response.status,
+    code: envelope?.code ?? "http_error",
+    correlationId: envelope?.correlation_id ?? correlationId,
+    retryAfterSeconds: parseRetryAfter(response.headers.get("Retry-After")),
+  });
+}
+
+export async function request<T>(path: string, options: RequestOptions<T> = {}): Promise<T> {
+  const {
+    method = "GET",
+    body,
+    signal,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    acceptStatuses = [],
+    guard,
+    authenticated = true,
+  } = options;
+
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+
+  const response = await send(path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
+    timeoutMs,
+    authenticated,
+  });
 
   const headerCorrelationId = response.headers.get("X-Correlation-ID") ?? undefined;
   const payload = await readJson(response);
@@ -141,14 +181,115 @@ export async function request<T>(path: string, options: RequestOptions<T> = {}):
     }
     return payload as T;
   }
+  throw failureOf(response, payload, headerCorrelationId);
+}
 
-  // Only the server's sanitised envelope is surfaced, never a raw response body.
-  const envelope = isErrorEnvelope(payload) ? payload.error : undefined;
-  throw new ApiError({
-    message: envelope?.message ?? `The API responded with HTTP ${response.status}.`,
-    status: response.status,
-    code: envelope?.code ?? "http_error",
-    correlationId: envelope?.correlation_id ?? headerCorrelationId,
-    retryAfterSeconds: parseRetryAfter(response.headers.get("Retry-After")),
+// A file takes longer to send than a JSON request, and the server reads, checks and (for a share)
+// encrypts it before it answers.
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+export interface NoContentOptions {
+  method?: "POST" | "DELETE";
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/** For calls that answer 204 No Content, such as a delete: success carries no body to check. */
+export async function requestNoContent(
+  path: string,
+  { method = "DELETE", signal, timeoutMs = DEFAULT_TIMEOUT_MS }: NoContentOptions = {},
+): Promise<void> {
+  const response = await send(path, {
+    method,
+    headers: { Accept: "application/json" },
+    signal,
+    timeoutMs,
+    authenticated: true,
   });
+  if (response.ok) return;
+  const correlationId = response.headers.get("X-Correlation-ID") ?? undefined;
+  throw failureOf(response, await readJson(response), correlationId);
+}
+
+export interface UploadOptions<T> {
+  /** The name to record for the file. It is sent percent-encoded, so any Unicode name is safe. */
+  fileName: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  guard?: (value: unknown) => value is T;
+}
+
+/**
+ * Sends the raw bytes of a file as `application/octet-stream` with the name in `X-File-Name`.
+ * The API does not accept multipart forms, because those would put the plaintext in a temporary
+ * file on the server.
+ */
+export async function uploadFile<T>(
+  path: string,
+  file: Blob,
+  { fileName, signal, timeoutMs = UPLOAD_TIMEOUT_MS, guard }: UploadOptions<T>,
+): Promise<T> {
+  const response = await send(path, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/octet-stream",
+      "X-File-Name": encodeURIComponent(fileName),
+    },
+    body: file,
+    signal,
+    timeoutMs,
+    authenticated: true,
+  });
+
+  const headerCorrelationId = response.headers.get("X-Correlation-ID") ?? undefined;
+  const payload = await readJson(response);
+  if (!response.ok) throw failureOf(response, payload, headerCorrelationId);
+  if (payload === undefined || (guard && !guard(payload))) {
+    throw invalidResponse(response.status, headerCorrelationId);
+  }
+  return payload as T;
+}
+
+export interface DownloadOptions {
+  method?: "GET" | "POST";
+  body?: unknown;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  authenticated?: boolean;
+}
+
+export interface DownloadedFile {
+  data: Blob;
+  /** The value of the Content-Disposition header, which the caller turns into a file name. */
+  contentDisposition: string | null;
+}
+
+/** Fetches a binary answer. A failure still arrives as the API's JSON error envelope. */
+export async function downloadFile(
+  path: string,
+  { method = "GET", body, signal, timeoutMs = UPLOAD_TIMEOUT_MS, authenticated = true }: DownloadOptions = {},
+): Promise<DownloadedFile> {
+  const headers: Record<string, string> = { Accept: "application/octet-stream, application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+
+  const response = await send(path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
+    timeoutMs,
+    authenticated,
+  });
+
+  const headerCorrelationId = response.headers.get("X-Correlation-ID") ?? undefined;
+  if (!response.ok) throw failureOf(response, await readJson(response), headerCorrelationId);
+
+  let data: Blob;
+  try {
+    data = await response.blob();
+  } catch {
+    throw invalidResponse(response.status, headerCorrelationId);
+  }
+  return { data, contentDisposition: response.headers.get("Content-Disposition") };
 }

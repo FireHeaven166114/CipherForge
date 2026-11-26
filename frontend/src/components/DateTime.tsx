@@ -1,4 +1,5 @@
-import { formatRelative, formatUtc, parseTimestamp } from "../features/intel/format";
+import { formatRelative } from "../features/intel/format";
+import { formatIst, parseTimestamp } from "../features/time/ist";
 import { useNow } from "../hooks/useNow";
 
 interface DateTimeProps {
@@ -9,7 +10,7 @@ interface DateTimeProps {
   stacked?: boolean;
 }
 
-/** An exact UTC time for correlating with other systems, plus how long ago that was. */
+/** An exact IST time (`DD-MM-YYYY hh:mm:ss A IST`), plus how long ago that was. */
 export default function DateTime({ value, fallback = "Never", stacked = false }: DateTimeProps) {
   const now = useNow();
   const date = parseTimestamp(value);
@@ -18,7 +19,7 @@ export default function DateTime({ value, fallback = "Never", stacked = false }:
   const relative = formatRelative(date, now);
   return (
     <time dateTime={date.toISOString()}>
-      {formatUtc(date)}{" "}
+      {formatIst(date)}{" "}
       <span className={stacked ? "block text-xs text-ink-300" : "text-ink-300"}>
         {stacked ? relative : `(${relative})`}
       </span>

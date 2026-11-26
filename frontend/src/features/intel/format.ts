@@ -18,26 +18,6 @@ const compactFormat = new Intl.NumberFormat("en-US", { notation: "compact", maxi
 // Below this, a number is short enough to print in full wherever a count is drawn.
 const COMPACT_FROM = 1_000_000;
 
-// A timestamp without a zone would be read as local time, so assume UTC like the API does.
-const NO_ZONE = /^\d{4}-\d{2}-\d{2}T[\d:.]+$/;
-
-/** Parses an API timestamp; null for missing or unreadable values. */
-export function parseTimestamp(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(NO_ZONE.test(value) ? `${value}Z` : value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-/** "2026-05-01 12:00 UTC". Analysts correlate across systems, so time is always UTC. */
-export function formatUtc(date: Date): string {
-  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
-/** "14:05:09 UTC", for a live view that says when its data last arrived. */
-export function formatClock(date: Date): string {
-  return `${date.toISOString().slice(11, 19)} UTC`;
-}
-
 /** "3 days ago" or "in 5 hours"; anything under a minute is "just now". */
 export function formatRelative(target: Date, now: Date): string {
   const difference = target.getTime() - now.getTime();

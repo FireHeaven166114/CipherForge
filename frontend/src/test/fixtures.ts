@@ -65,6 +65,8 @@ export function makeAbuseIpdb(overrides: Partial<ProviderView> = {}): ProviderVi
     },
     tags: [],
     message: null,
+    verdict: null,
+    reason: null,
     ...overrides,
   };
 }
@@ -99,7 +101,145 @@ export function makeOtx(overrides: Partial<ProviderView> = {}): ProviderView {
     },
     tags: ["phishing", "c2"],
     message: null,
+    verdict: null,
+    reason: null,
     ...overrides,
+  };
+}
+
+export function makeVirusTotal(overrides: Partial<ProviderView> = {}): ProviderView {
+  return {
+    provider: "virustotal",
+    display_name: "VirusTotal",
+    status: "ok",
+    freshness: "fresh",
+    signal: 0.7,
+    fetched_at: "2026-05-02T09:30:00Z",
+    evidence_at: "2026-05-02T06:00:00Z",
+    first_evidence_at: "2026-03-01T00:00:00Z",
+    cache_expires_at: "2026-05-03T09:30:00Z",
+    from_cache: false,
+    summary: {
+      verdict: "malicious",
+      analysis_status: "completed",
+      malicious: 7,
+      suspicious: 1,
+      harmless: 55,
+      undetected: 12,
+      timeout: 0,
+      engines_total: 75,
+      reputation: -14,
+      last_analysis_at: "2026-05-02T06:00:00Z",
+      first_submission_at: "2026-03-01T00:00:00Z",
+      times_submitted: 9,
+      categories: ["phishing"],
+      threat_label: "trojan.examplebot",
+      threat_names: ["examplebot"],
+      file_name: null,
+      file_type: null,
+      country_code: "NL",
+      asn: 64500,
+      as_owner: "Example Hosting Ltd",
+      provider_id: "203.0.113.9",
+      provider_link: "https://www.virustotal.com/gui/ip-address/203.0.113.9",
+      malware_families: ["Examplebot"],
+      notes: [],
+    },
+    tags: ["botnet"],
+    message: null,
+    verdict: "malicious",
+    reason: null,
+    ...overrides,
+  };
+}
+
+export function makeThreatFox(overrides: Partial<ProviderView> = {}): ProviderView {
+  return {
+    provider: "threatfox",
+    display_name: "ThreatFox",
+    status: "ok",
+    freshness: "fresh",
+    signal: 0.9,
+    fetched_at: "2026-05-02T09:30:00Z",
+    evidence_at: "2026-04-28T08:00:00Z",
+    first_evidence_at: "2026-04-01T08:00:00Z",
+    cache_expires_at: "2026-05-02T15:30:00Z",
+    from_cache: false,
+    summary: {
+      verdict: "malicious",
+      match_count: 2,
+      highest_confidence: 90,
+      association: "indicator",
+      matches: [
+        {
+          id: "1234567",
+          ioc: "203.0.113.9:443",
+          ioc_type: "ip:port",
+          threat_type: "botnet_cc",
+          malware: "Examplebot",
+          malware_aliases: ["Samplebot"],
+          confidence_level: 90,
+          first_seen: "2026-04-01T08:00:00Z",
+          last_seen: "2026-04-28T08:00:00Z",
+          reporter: "example-reporter",
+          reference: "https://reports.example.test/examplebot",
+          malpedia_url: "https://malpedia.caad.fkie.fraunhofer.de/details/win.examplebot",
+          tags: ["c2"],
+        },
+        {
+          id: "1234568",
+          ioc: "203.0.113.9:8080",
+          ioc_type: "ip:port",
+          threat_type: "botnet_cc",
+          malware: "Examplebot",
+          malware_aliases: [],
+          confidence_level: 60,
+          first_seen: "2026-04-10T08:00:00Z",
+          last_seen: null,
+          reporter: "another-reporter",
+          reference: null,
+          malpedia_url: null,
+          tags: [],
+        },
+      ],
+      threat_types: ["botnet_cc"],
+      malware_families: ["Examplebot"],
+      first_seen_at: "2026-04-01T08:00:00Z",
+      last_seen_at: "2026-04-28T08:00:00Z",
+      notes: ["ThreatFox records ip:port pairs; matches are made on the address alone."],
+    },
+    tags: ["c2"],
+    message: null,
+    verdict: "malicious",
+    reason: null,
+    ...overrides,
+  };
+}
+
+/** A provider that gave no answer: `reason` says why, `status` how the card is headed. */
+export function makeFailedProvider(
+  provider: string,
+  displayName: string,
+  status: ProviderView["status"],
+  reason: NonNullable<ProviderView["reason"]>,
+  message: string,
+): ProviderView {
+  return {
+    provider,
+    display_name: displayName,
+    status,
+    freshness: null,
+    signal: null,
+    fetched_at: null,
+    evidence_at: null,
+    first_evidence_at: null,
+    cache_expires_at: null,
+    from_cache: false,
+    summary: {},
+    tags: [],
+    message,
+    verdict: null,
+    reason,
   };
 }
 
@@ -168,21 +308,14 @@ export function makeInvestigation(overrides: Partial<Investigation> = {}): Inves
 
 /** What the API returns when no provider is configured: every score is zero, nothing was assessed. */
 export function makeNotAssessed(): Investigation {
-  const notConfigured = (provider: string, displayName: string): ProviderView => ({
-    provider,
-    display_name: displayName,
-    status: "not_configured",
-    freshness: null,
-    signal: null,
-    fetched_at: null,
-    evidence_at: null,
-    first_evidence_at: null,
-    cache_expires_at: null,
-    from_cache: false,
-    summary: {},
-    tags: [],
-    message: `${displayName} is not configured (no API key set).`,
-  });
+  const notConfigured = (provider: string, displayName: string): ProviderView =>
+    makeFailedProvider(
+      provider,
+      displayName,
+      "not_configured",
+      "not_configured",
+      `${displayName} is not configured (no API key set).`,
+    );
   return makeInvestigation({
     indicator: makeIndicator({
       indicator_value: "203.0.113.50",
@@ -195,7 +328,12 @@ export function makeNotAssessed(): Investigation {
       tags: [],
       status: "stale",
     }),
-    providers: [notConfigured("abuseipdb", "AbuseIPDB"), notConfigured("otx", "AlienVault OTX")],
+    providers: [
+      notConfigured("abuseipdb", "AbuseIPDB"),
+      notConfigured("otx", "AlienVault OTX"),
+      notConfigured("virustotal", "VirusTotal"),
+      notConfigured("threatfox", "ThreatFox"),
+    ],
     score: makeScore({
       score: 0,
       classification: "informational",
@@ -209,6 +347,8 @@ export function makeNotAssessed(): Investigation {
         "No provider returned evidence for this indicator.",
         "AbuseIPDB is not configured, so it contributed no evidence.",
         "AlienVault OTX is not configured, so it contributed no evidence.",
+        "VirusTotal is not configured, so it contributed no evidence.",
+        "ThreatFox is not configured, so it contributed no evidence.",
         "Absence of reports is not proof that an indicator is safe; providers only know what has been reported to them.",
       ],
       recommended_actions: [
@@ -227,7 +367,7 @@ export function makeStats(overrides: Partial<Stats> = {}): Stats {
   return {
     total_indicators: 12,
     by_classification: { informational: 4, low: 3, medium: 2, high: 2, critical: 1 },
-    by_type: { ipv4: 6, ipv6: 1, domain: 3, url: 1, sha256: 1 },
+    by_type: { ipv4: 6, ipv6: 1, domain: 3, url: 1, md5: 0, sha1: 0, sha256: 1 },
     lookups_last_24h: 9,
     providers: makeProviders(),
     ...overrides,
@@ -247,7 +387,21 @@ export function makeProviders(simulated = false): ProviderInfo[] {
       name: "otx",
       display_name: "AlienVault OTX",
       configured: false,
-      supported_types: ["ipv4", "ipv6", "domain", "url", "sha256"],
+      supported_types: ["ipv4", "ipv6", "domain", "url", "md5", "sha1", "sha256"],
+      simulated,
+    },
+    {
+      name: "virustotal",
+      display_name: "VirusTotal",
+      configured: false,
+      supported_types: ["ipv4", "ipv6", "domain", "url", "md5", "sha1", "sha256"],
+      simulated,
+    },
+    {
+      name: "threatfox",
+      display_name: "ThreatFox",
+      configured: false,
+      supported_types: ["ipv4", "ipv6", "domain", "url", "md5", "sha256"],
       simulated,
     },
   ];
@@ -310,7 +464,7 @@ export function makeOverview(overrides: Partial<Overview> = {}): Overview {
       not_assessed_indicators: 1,
     },
     by_classification: { informational: 4, low: 3, medium: 1, high: 2, critical: 1, not_assessed: 1 },
-    by_type: { ipv4: 6, ipv6: 1, domain: 3, url: 1, sha256: 1 },
+    by_type: { ipv4: 6, ipv6: 1, domain: 3, url: 1, md5: 0, sha1: 0, sha256: 1 },
     matrix: [
       {
         indicator_type: "ipv4",
@@ -327,6 +481,14 @@ export function makeOverview(overrides: Partial<Overview> = {}): Overview {
       {
         indicator_type: "url",
         counts: { informational: 0, low: 1, medium: 0, high: 0, critical: 0, not_assessed: 0 },
+      },
+      {
+        indicator_type: "md5",
+        counts: { informational: 0, low: 0, medium: 0, high: 0, critical: 0, not_assessed: 0 },
+      },
+      {
+        indicator_type: "sha1",
+        counts: { informational: 0, low: 0, medium: 0, high: 0, critical: 0, not_assessed: 0 },
       },
       {
         indicator_type: "sha256",

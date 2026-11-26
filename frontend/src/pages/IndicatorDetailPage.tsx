@@ -170,7 +170,13 @@ function IndicatorDetail({ id }: { id: string }) {
 
       {state.status === "loading" ? <LoadingNote>Loading the stored record…</LoadingNote> : null}
       {state.status === "error" ? <ErrorNotice error={state.error} onRetry={reload} /> : null}
-      {investigation ? <InvestigationView investigation={investigation} /> : null}
+      {investigation ? (
+        <InvestigationView
+          investigation={investigation}
+          onRetry={() => recheck.run(investigation.indicator.indicator_value, false)}
+          retrying={rechecking}
+        />
+      ) : null}
 
       <DeleteIndicatorsDialog
         targets={confirming && value !== undefined ? [{ id: shownId, value }] : null}

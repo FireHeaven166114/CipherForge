@@ -14,6 +14,10 @@ import { fileURLToPath } from "node:url";
 const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 4180);
 const API_URL = new URL(process.env.E2E_API_URL ?? "http://127.0.0.1:8100");
 const MAX_BODY_BYTES = 64 * 1024;
+// The two uploads send a file as the raw request body, so nginx.conf lets them exceed the limit
+// above; change both together. The backend enforces the limit actually configured for each.
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const UPLOAD_PATH = /^\/api\/v1\/(?:files|network\/pcap)$/;
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 const frontendDir = fileURLToPath(new URL("../..", import.meta.url));
@@ -89,8 +93,9 @@ function serveFile(request: IncomingMessage, response: ServerResponse, file: str
   createReadStream(file).pipe(response);
 }
 
-function forwardToApi(request: IncomingMessage, response: ServerResponse): void {
-  if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES) {
+function forwardToApi(request: IncomingMessage, response: ServerResponse, pathname: string): void {
+  const limit = UPLOAD_PATH.test(pathname) ? MAX_UPLOAD_BYTES : MAX_BODY_BYTES;
+  if (Number(request.headers["content-length"] ?? 0) > limit) {
     send(response, 413, { "content-type": "text/plain" }, "Request body too large");
     request.resume();
     return;
@@ -125,7 +130,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (PROXIED_PATH.test(pathname)) {
-    forwardToApi(request, response);
+    forwardToApi(request, response, pathname);
     return;
   }
   if (request.method !== "GET" && request.method !== "HEAD") {

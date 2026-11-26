@@ -1,49 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  formatClock,
   formatCompactCount,
   formatCount,
   formatPoints,
   formatRelative,
   formatStrength,
-  formatUtc,
   formatWait,
-  parseTimestamp,
   plural,
 } from "./format";
-
-describe("parseTimestamp", () => {
-  it("reads API timestamps and treats a missing zone as UTC", () => {
-    expect(parseTimestamp("2026-05-01T12:00:00Z")?.toISOString()).toBe("2026-05-01T12:00:00.000Z");
-    expect(parseTimestamp("2026-05-01T14:00:00+02:00")?.toISOString()).toBe(
-      "2026-05-01T12:00:00.000Z",
-    );
-    expect(parseTimestamp("2026-05-01T12:00:00.123456")?.toISOString()).toBe(
-      "2026-05-01T12:00:00.123Z",
-    );
-  });
-
-  it("returns null for missing or unreadable values", () => {
-    for (const value of [null, undefined, "", "yesterday", "2026-13-45T99:99:99Z"]) {
-      expect(parseTimestamp(value)).toBeNull();
-    }
-  });
-});
-
-describe("formatUtc", () => {
-  it("always shows UTC, whatever the browser's zone", () => {
-    expect(formatUtc(new Date("2026-05-01T23:59:59Z"))).toBe("2026-05-01 23:59 UTC");
-    expect(formatUtc(new Date("2026-01-02T03:04:00+05:30"))).toBe("2026-01-01 21:34 UTC");
-  });
-});
-
-describe("formatClock", () => {
-  it("shows the UTC time of day with seconds, whatever the browser's zone", () => {
-    expect(formatClock(new Date("2026-05-01T09:05:03Z"))).toBe("09:05:03 UTC");
-    expect(formatClock(new Date("2026-05-01T23:59:59.999+02:00"))).toBe("21:59:59 UTC");
-  });
-});
 
 describe("formatRelative", () => {
   const now = new Date("2026-05-10T12:00:00Z");

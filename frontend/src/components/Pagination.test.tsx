@@ -43,6 +43,22 @@ describe("Pagination", () => {
     expect(screen.queryByText(/can be browsed/)).not.toBeInTheDocument();
   });
 
+  it("is named after what it pages, so that several lists can share a screen", () => {
+    render(
+      <>
+        <Pagination page={1} pageSize={25} total={60} label="Flows pagination" onPageChange={vi.fn()} />
+        <Pagination page={1} pageSize={25} total={60} label="Alerts pagination" onPageChange={vi.fn()} />
+        <Pagination page={1} pageSize={25} total={60} onPageChange={vi.fn()} />
+      </>,
+    );
+
+    expect(screen.getAllByRole("navigation").map((nav) => nav.getAttribute("aria-label"))).toEqual([
+      "Flows pagination",
+      "Alerts pagination",
+      "Pagination",
+    ]);
+  });
+
   it("renders nothing when there are no results", () => {
     const { container } = render(
       <Pagination page={1} pageSize={25} total={0} onPageChange={vi.fn()} />,

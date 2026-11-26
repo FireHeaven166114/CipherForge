@@ -16,3 +16,39 @@ export function attackTechniqueUrl(id: unknown): string | null {
     ? `https://attack.mitre.org/techniques/${id.replace(".", "/")}/`
     : null;
 }
+
+const VIRUSTOTAL_LINK =
+  /^https:\/\/www\.virustotal\.com\/gui\/(ip-address|domain|url|file)\/([A-Za-z0-9._:%-]{1,256})$/;
+
+/**
+ * VirusTotal's page for the indicator. The API sends a ready-made link, but only one of this exact
+ * shape is accepted and it is rebuilt from its two parts, so nothing else can ride along.
+ */
+export function virusTotalUrl(link: unknown): string | null {
+  const match = typeof link === "string" ? VIRUSTOTAL_LINK.exec(link) : null;
+  return match ? `https://www.virustotal.com/gui/${match[1]}/${match[2]}` : null;
+}
+
+const THREATFOX_ID = /^\d{1,12}$/;
+
+/** ThreatFox's page for one of its IOC records, from the numeric id the API reports. */
+export function threatFoxIocUrl(id: unknown): string | null {
+  return typeof id === "string" && THREATFOX_ID.test(id) ? `https://threatfox.abuse.ch/ioc/${id}/` : null;
+}
+
+const MALPEDIA_LINK =
+  /^https:\/\/malpedia\.caad\.fkie\.fraunhofer\.de\/(details|actor)\/([a-z0-9_.-]{1,96})$/;
+
+/** The Malpedia entry for a malware family or actor, when the address has exactly that shape. */
+export function malpediaUrl(link: unknown): string | null {
+  const match = typeof link === "string" ? MALPEDIA_LINK.exec(link) : null;
+  return match ? `https://malpedia.caad.fkie.fraunhofer.de/${match[1]}/${match[2]}` : null;
+}
+
+/**
+ * A reporter-supplied address, written so that it cannot be followed by accident. Reporters are
+ * strangers, and the address may well point at the malware itself, so it is shown but never linked.
+ */
+export function defang(address: string): string {
+  return address.replace(/^http/i, "hxxp");
+}

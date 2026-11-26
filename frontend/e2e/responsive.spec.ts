@@ -31,6 +31,11 @@ const SCREENS: readonly Screen[] = [
   { name: "small phone", width: 320, height: 568, tabBar: true, tiles: 1 },
 ];
 
+/** The rail lists all six pages; the phone's tab bar has room for five and leaves out System status. */
+function navigationLinks(screen: Screen): number {
+  return screen.tabBar ? 5 : 6;
+}
+
 // One lookup for the whole file: the same value is answered from the stored record after the first time.
 const LOOKED_UP = fresh.domain();
 
@@ -221,7 +226,7 @@ for (const screen of SCREENS) {
       }
 
       const links = nav.getByRole("link");
-      await expect(links).toHaveCount(4);
+      await expect(links).toHaveCount(navigationLinks(screen));
       for (const link of await links.all()) {
         const box = must(await link.boundingBox(), "a link box");
         const where = await link.innerText();
@@ -267,7 +272,7 @@ for (const screen of SCREENS) {
             return { text: text.trim(), lines: tops.size, spaceLeft: left - box.left, spaceRight: box.right - right };
           }),
         );
-      expect(labels).toHaveLength(4);
+      expect(labels).toHaveLength(navigationLinks(screen));
       for (const label of labels) {
         expect(label.text, "a visible label").not.toBe("");
         expect(label.lines, `lines used by ${label.text}`).toBe(1);
@@ -330,7 +335,7 @@ for (const screen of SCREENS) {
 
       const header = must(await page.getByRole("banner").boundingBox(), "the top bar box");
       const links = page.getByRole("navigation", { name: "Primary" }).getByRole("link");
-      await expect(links).toHaveCount(4);
+      await expect(links).toHaveCount(navigationLinks(screen));
       for (const link of await links.all()) {
         const box = must(await link.boundingBox(), "a link box");
         const where = await link.innerText();
