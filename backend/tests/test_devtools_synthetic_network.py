@@ -19,6 +19,7 @@ from app.models.enums import IndicatorType
 from app.models.threat import ThreatIndicator
 from app.network.capture import BackendInfo
 from app.network.packets import extract_packet
+from app.network.scapy_support import load_scapy
 from app.services.normalization import is_public_address
 from devtools import demo_server
 from devtools.demo_data import build_catalogue, tiers_of
@@ -71,6 +72,20 @@ def _frames_as_tuples(frames: list[Any]) -> list[tuple[float, bytes]]:
 def test_the_committed_sample_capture_is_what_the_generator_writes() -> None:
     assert SAMPLE_PATH.is_file(), REGENERATE
     assert _frames_as_tuples(read_pcap(SAMPLE_PATH)) == _frames_as_tuples(scenario()), REGENERATE
+
+
+def test_the_sample_holds_only_made_up_hardware_addresses() -> None:
+    # Scapy fills in any MAC left out from the adapter of the machine that runs it: the sample
+    # would then carry a real hardware address and differ from one machine to the next.
+    made_up = {"02:00:00:00:00:01", "02:00:00:00:00:02", "ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"}
+    scapy = load_scapy()
+    seen: set[str] = set()
+    for frame in read_pcap(SAMPLE_PATH):
+        seen |= {frame[scapy.Ether].src, frame[scapy.Ether].dst}
+        if frame.haslayer(scapy.ARP):
+            seen |= {frame[scapy.ARP].hwsrc, frame[scapy.ARP].hwdst}
+
+    assert seen <= made_up, REGENERATE
 
 
 def test_writing_the_sample_is_repeatable_and_readable_in_both_formats(tmp_path: Path) -> None:

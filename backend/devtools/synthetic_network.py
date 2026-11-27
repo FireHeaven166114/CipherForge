@@ -109,8 +109,10 @@ def _icmp(src: str, dst: str, kind: str, at: float) -> Any:
 
 def _arp(at: float) -> Any:
     scapy = load_scapy()
+    # hwsrc is set explicitly: left out, Scapy fills in the MAC of this machine's own adapter,
+    # which would put a real hardware address in the file and make it differ on every machine.
     built = scapy.Ether(src=_MAC_CLIENT, dst="ff:ff:ff:ff:ff:ff") / scapy.ARP(
-        psrc=LAN_HOST, pdst=LAN_PEER
+        hwsrc=_MAC_CLIENT, psrc=LAN_HOST, pdst=LAN_PEER
     )
     built.time = at
     return built
