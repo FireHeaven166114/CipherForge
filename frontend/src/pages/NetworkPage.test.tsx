@@ -1197,8 +1197,12 @@ describe("NetworkPage: looking an address up", () => {
 
   it("shows the busy state while the providers are asked, and ignores a second press", async () => {
     const user = userEvent.setup();
+    let looked = false;
     let release: (answer: Response) => void = () => undefined;
+    const answer = () => makeAlert({ enrichment: makeCompletedEnrichment() });
     const fetchMock = await openSession({
+      // The answer ends the lookup, and the list read again afterwards holds it, as a real server's would.
+      alerts: () => makeAlertPage([looked ? answer() : makeAlert()]),
       enrich: () =>
         new Promise<Response>((resolve) => {
           release = resolve;
@@ -1212,7 +1216,8 @@ describe("NetworkPage: looking an address up", () => {
     await user.click(busy);
 
     expect(requested(fetchMock, "POST").filter((url) => url === ENRICH)).toHaveLength(1);
-    release(jsonResponse(makeAlert({ enrichment: makeCompletedEnrichment() })));
+    looked = true;
+    release(jsonResponse(answer()));
     expect(await within(item).findByText("Risk score 72 of 100")).toBeInTheDocument();
   });
 
