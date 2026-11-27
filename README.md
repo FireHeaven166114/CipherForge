@@ -23,9 +23,8 @@ Indian Standard Time (IST).
 ![The CipherForge Overview screen on a desktop: a navigation rail on the left, five headline tiles, and the Threat pulse and Risk posture panels over a dark animated background](docs/screenshots/overview.png)
 
 *The Overview screen in demo mode, so the numbers are invented. The background moves; this is one
-frame. The screenshots in this guide were taken before the Network and Files screens, VirusTotal and
-ThreatFox existed, so the navigation rail in them is shorter than the one you will see, the results
-show two provider cards where you will see four, and any times in them are in UTC rather than IST.*
+frame. Every screenshot in this guide was taken from demo mode (the first-run ones from an empty
+installation with no keys), and every time in them is in IST.*
 
 > **Use it responsibly.** Threat intelligence sends the text you type to outside services. Network
 > monitoring can capture the traffic of a real network interface: use it only on systems and networks
@@ -519,12 +518,16 @@ public address, what the providers say about it. Only one live capture can run a
 you can see, stop or delete your own sessions. Live capture needs Npcap or libpcap; see
 [docs/network-monitoring.md](docs/network-monitoring.md).
 
+![The Network screen in demo mode after a capture file was analysed: the live capture panel, the panel for analysing a capture file with its result, and the session history listing one completed session](docs/screenshots/network.png)
+
 ### Sharing a file
 
 On **Files**, upload a file, then create a share link for it. Choose when the link expires, how many
 times it can be downloaded and whether it needs a password, and copy the link: it is shown **once**,
 and CipherForge keeps only a fingerprint of it. Revoke a link at any time. Only the owner of a file
 can see it or its links. See [docs/file-sharing.md](docs/file-sharing.md).
+
+![The Files screen in demo mode: the upload panel, a notice that a file was encrypted and stored, and a table of three encrypted files that are ready to share](docs/screenshots/files.png)
 
 Everything else — reading a result and its score breakdown, what the provider labels mean,
 shortcuts, the demo's sample values, and the visual effects — is covered screen by screen in
@@ -874,9 +877,9 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
   off (see [Visual effects and small screens](docs/user-guide.md#visual-effects-and-small-screens)).
 - **No screen reader has been used.** The accessibility checks are automatic ones: contrast, layout
   and keyboard use.
-- **The screenshots in this guide show demo data,** so their numbers are invented. They were taken
-  before the Network and Files screens, VirusTotal and ThreatFox existed: they show two provider
-  cards where the application now shows four, and their times are in UTC.
+- **The screenshots in this guide show demo data,** so their numbers are invented. A real
+  installation shows its own numbers, and provider answers from the real services, not the
+  simulated ones of demo mode.
 
 ### Smaller limits
 

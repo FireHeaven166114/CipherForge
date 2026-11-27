@@ -344,27 +344,25 @@ npm.cmd run dev
 
 ![The Overview of a brand-new installation: every headline tile shows 0, a panel says Nothing here yet, the providers panel says none is configured, and the platform modules are listed](screenshots/first-run-empty.png)
 
-1. **The headline tiles** all show 0, because nothing has been investigated.
+1. **The headline tiles** (five of them) all show 0, because nothing has been investigated.
 2. **"Nothing here yet"** is where the highest-risk and latest indicators will appear.
-3. **The providers panel** says that no provider is configured. Until you add a key, every
-   investigation comes back as **Not assessed**.
+3. **The providers panel** says that no provider is configured, and lists the four providers, each
+   marked **Not configured**. Until you add a key, every investigation comes back as
+   **Not assessed**.
 4. **Platform modules** shows what the project is made of. Threat intelligence, Network monitoring
    and Secure file sharing are **LIVE**. Incident management and Administration are **PLANNED**.
-
-The pictures in this guide were taken with an earlier version of the dashboard, before VirusTotal,
-ThreatFox, network monitoring and file sharing were added, so your screen lists more providers and
-modules than they do.
 
 **Step 6. Make your first investigation.** Click **Investigate an indicator**, click the **IPv4**
 example (`8.8.8.8`) and press **Investigate**. With no keys you will see this:
 
-![A first investigation with no API keys: the gauge says Not assessed, and the provider cards say Not configured](screenshots/first-run-no-keys.png)
+![A first investigation with no API keys: the gauge says Not assessed, and the four provider cards say Not configured](screenshots/first-run-no-keys.png)
 
 1. **The gauge** says **Not assessed** instead of showing a number.
 2. **The explanation** says that no provider answered, so this is not a clean result: nothing was
    checked.
-3. **Each provider card** says **Not configured**: no key is set on the server for that provider. For
-   `8.8.8.8` your screen shows four cards: AbuseIPDB, AlienVault OTX, VirusTotal and ThreatFox.
+3. **The provider cards.** Each one says **Not configured**: no key is set on the server for that
+   provider. For `8.8.8.8` there are four, one each for AbuseIPDB, AlienVault OTX, VirusTotal and
+   ThreatFox.
 
 This is correct, not a bug. CipherForge cannot say anything about an indicator until at least one
 provider answers.

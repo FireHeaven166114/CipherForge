@@ -9,13 +9,9 @@ Open <http://127.0.0.1:5173> for Paths A and B, or <http://localhost:3000> for P
 
 The pictures in this guide come from the demo (Path A), so the indicators and numbers in them are
 **invented**. Yours will look different. The numbered markers were added to the pictures to match the
-numbered lists under them. They are not on the real screen.
-
-**The pictures are older than the screens.** They were taken before the Network and Files screens,
-VirusTotal, ThreatFox and Indian Standard Time were added. So the menu in them is shorter, the
-provider section shows two cards instead of four, and any times in them are in UTC. The text under
-each picture describes the screen as it is now. The Network and Files screens have no pictures:
-their buttons and messages are quoted exactly as they appear, so you can match them.
+numbered lists under them. They are not on the real screen. The orange banner across the top of
+the demo pictures ("Simulated providers: this is demo data, not real threat intelligence") is
+shown only in demo mode.
 
 **Times are in Indian Standard Time.** Every time on screen is IST (UTC+05:30), written like
 `25-11-2026 09:49:00 AM IST` or, where the date is obvious, `09:49:00 AM IST`. CipherForge stores
@@ -99,7 +95,7 @@ more on Path B: live capture needs a packet-capture driver
    answered, which "is not the same as clean"). The first two also show the change since the 24 hours
    before. **Click a tile** to open the list of indicators behind it.
 6. **Investigate an indicator.** The quickest way to start a lookup. Next to it, "Live · refreshed
-   09:49:00 AM IST" shows when the figures were last updated, and **Refresh** updates them now. If a
+   12:44:49 PM IST" shows when the figures were last updated, and **Refresh** updates them now. If a
    refresh fails, "Live" turns into "Stale" and the figures on screen are the last good ones. They
    also update by themselves every minute.
 7. **Threat pulse and Risk posture.** Threat pulse shows the lookups per day and how many of them
@@ -138,9 +134,10 @@ Overview uses only the most recent ones and prints a note saying so.
 
 ![The Investigate form, with five numbered markers](screenshots/tour-investigate-form.png)
 
-1. **The input box.** Type or paste one indicator. A chip underneath (here "Looks like IPv4") shows
-   what CipherForge thinks you typed.
-2. **Fill with an example.** One click puts a sample of each type in the box.
+1. **The input box.** Type or paste one indicator. A chip at the right-hand end of the box (here
+   "IPv4") shows what CipherForge thinks you typed. The line under the box lists what it accepts.
+2. **Fill with an example.** One chip each for IPv4, Domain, URL, MD5, SHA-1 and SHA-256. A click puts
+   that sample in the box.
 3. **Ask the providers again, even if a stored answer is recent.** Normally CipherForge reuses an
    answer it saved a few hours ago, which protects your daily allowance with the providers. Tick the
    box to ask again anyway. This uses allowance. (An answer less than a minute old is reused
@@ -184,8 +181,9 @@ addresses, web links that contain a user name and password, SHA-512 hashes, and 
 
 ![A result for 8.8.8.8: a score of 0, Informational](screenshots/tour-result-fine.png)
 
-1. **The gauge.** A ring that fills up to the score and changes colour with the risk band.
-2. **The score**, from 0 to 100, with its band name.
+1. **The gauge.** A ring that fills up to the score and changes colour with the risk band. The
+   score, from 0 to 100, and its band name are in the middle.
+2. **The indicator.** Its type (here IPv4) and the value you typed.
 3. **The confidence bar.** How much fresh evidence stands behind the score. It is *not* the chance
    that the indicator is bad.
 4. **The facts.** The status (**Active** means at least one provider answer is still fresh,
@@ -206,7 +204,7 @@ Markers 1 to 4 are the same as above. The new ones are:
 
 ### Each provider's answer
 
-![The Provider answers section: one card for each provider (the picture predates VirusTotal and ThreatFox, so it shows two)](screenshots/tour-result-providers.png)
+![The Provider answers section: the AbuseIPDB and AlienVault OTX cards side by side, with four numbered markers (VirusTotal and ThreatFox are on the next row)](screenshots/tour-result-providers.png)
 
 Scroll down to **Provider answers**. Its subtitle says, "Each provider is shown on its own, before
 CipherForge combines them." There is one card for each of the four providers (AbuseIPDB, AlienVault
@@ -219,7 +217,7 @@ OTX, VirusTotal and ThreatFox), so if they disagree you see it here.
 2. **Evidence strength.** How strong this provider's evidence is, from 0 to 1. It is not a
    probability.
 3. **Source.** "Queried live for this lookup" or "Stored answer from an earlier lookup".
-4. **The next provider's card.**
+4. **The next provider's card**, here AlienVault OTX. VirusTotal and ThreatFox are on the next row.
 
 A card also lists how fresh the answer is, the first and latest activity, when it was checked and how
 long the answer stays valid ("Answer valid until"), followed by the provider's own facts:
@@ -258,13 +256,13 @@ cannot take.
 
 ![The "How the score was built" panel](screenshots/tour-result-score.png)
 
-This panel comes right after the provider cards. It starts with a one-line summary, such as "2
-providers answered; 2 reported malicious activity; 2 had evidence strong and recent enough to count
-as independent support."
+This panel comes right after the provider cards.
 
 1. **The points table.** Each line is one reason with its points. A minus number takes points away
    (for example the cap at 100).
-2. **The total**, "Score (out of 100)".
+2. **The total**, "Score (out of 100)". Under it come a one-line summary, such as "4 providers
+   answered; 4 reported malicious activity; 4 had evidence strong and recent enough to count as
+   independent support.", and a sentence that says what the confidence number means.
 3. **What is not known.** The gaps in the evidence, stated plainly (for example "No internal
    telemetry was available").
 4. **Recommended next steps.** Advice that depends on the risk band. CipherForge only recommends.
@@ -281,7 +279,7 @@ that is never read as "safe".
 
 ### When nothing can be said
 
-![A Not assessed result: no number on the gauge, and no provider could answer (the picture predates VirusTotal and ThreatFox, so it shows two cards)](screenshots/tour-not-assessed.png)
+![A Not assessed result: no number on the gauge, and no provider could answer (the first two of the four provider cards are shown)](screenshots/tour-not-assessed.png)
 
 1. **The gauge** says **Not assessed** and shows no number.
 2. **The explanation**: "No provider answered, so CipherForge has no evidence about this indicator.
@@ -327,7 +325,7 @@ This is the list you get when you click the **High-risk indicators** tile on the
    **Classification** (High or critical, Critical, High, Medium, Low, Informational or Not assessed)
    and **Sort by** (Most recently checked, or Highest risk first). **Reset filters** appears when a
    filter is on.
-3. **The count**, such as "17 indicators found."
+3. **The count**, such as "37 indicators found."
 4. **An indicator.** Click it to open its saved record.
 5. **Score and Confidence.** The two numbers for each indicator. The other columns are Type,
    Classification, Sources (how many had evidence), Status and Last checked.
@@ -401,9 +399,9 @@ red button in it.
 
 ![The Indicators list after the deletion, with three numbered markers](screenshots/tour-delete-done.png)
 
-1. **The notice.** "Deleted 3 indicators and 15 stored provider answers." If an indicator had
+1. **The notice.** "Deleted 3 indicators and 19 stored provider answers." If an indicator had
    already been deleted by someone else, the notice also says how many were "already gone".
-2. **The count.** It goes down by the number you deleted, here from 17 to 14.
+2. **The count.** It goes down by the number you deleted, here from 37 to 34.
 3. **Dismiss.** Closes the notice.
 
 Things to know:
@@ -435,9 +433,20 @@ rules look for is in [network-monitoring.md](network-monitoring.md).
 of each packet, the time and the TCP flags, grouped into *flows*. A flow is one conversation between
 two addresses and ports.
 
-At the top, "Live · refreshed 09:49:00 AM IST" says when the page last heard from the server (it
-says **Stale** if the last attempt failed), and **Refresh** asks again. While a capture or an
-analysis is running, the page refreshes itself every 2 seconds. Otherwise it does so more slowly.
+![The Network screen in demo mode, after the sample capture file was analysed, with four numbered markers](screenshots/network.png)
+
+1. **When the page last heard from the server.** "Live · refreshed 12:46:49 PM IST" says when it
+   last did (it says **Stale** if the last attempt failed), and **Refresh** asks again. While a
+   capture or an analysis is running, the page refreshes itself every 2 seconds. Otherwise it does
+   so more slowly.
+2. **Live capture.** Choose an interface, then start and stop a capture. The badge shows the state
+   of the capture. **Capture backend** names what the server captures with (in the demo,
+   `simulated`) and says whether it is available. See [Capturing live traffic](#capturing-live-traffic).
+3. **Analyse a capture file.** Reads a file that someone captured earlier. Here it has just finished
+   the demo's sample and says "Analysis complete: 72 packets, 3 alerts." See
+   [Analysing a capture file](#analysing-a-capture-file).
+4. **Session history.** One row for every capture and every analysed file, here the sample,
+   `synthetic-network.pcap`. See [Session history](#session-history).
 
 ### Capturing live traffic
 
@@ -481,21 +490,65 @@ capture file works as well as the demo's sample.
 
 Every live capture and every analysed file is a *session*. **Session history** lists them, five to a
 page, with their source, status, start time, duration, packets and alerts. **View** opens a session
-below. The address then ends in `?session=` and the session's ID, so you can bookmark it. A bar above
-the session says "You are looking at a session you picked, not at your live capture." and offers
-**Back to the live capture** (or **Clear selection** when no capture is running).
+below (the button then says **Viewing**). The address then ends in `?session=` and the session's ID,
+so you can bookmark it. A bar above the session says "You are looking at a session you picked, not at
+your live capture." and offers **Back to the live capture**. When you have no live capture to go
+back to, as when you have only analysed files, it says "You are looking at a session you picked." and
+offers **Clear selection**.
 
 ### Reading a session
 
+Picking a session shows these panels below the history, from the top:
+
 | Panel | What it shows |
 | --- | --- |
-| **Session summary** | Duration, Packets, Data, Active flows, Flows seen, Alerts and Packets dropped, with the source, the start and end of the capture, and the alerts per rule. **What the totals leave out** lists what was not counted, such as non-IP and malformed packets, flows that were closed early or not stored, repeat alerts that were suppressed and alerts that were lost. |
+| **Session summary** | The totals of the session, the facts about it and what the totals leave out. [Annotated below](#the-session-summary). |
 | **Protocol distribution** | How the packets and bytes divide between protocols. |
 | **Top talkers** | The ten source and the ten destination addresses with the most data. A note warns when these lists may undercount. |
-| **Alerts** | One entry for each alert: its severity (**Low**, **Medium**, **High** or **Critical**), the rule's ID and title, an explanation, and "Observed X against a threshold of Y, within N seconds." **Evidence** opens the packets, flows and addresses behind it. Filter by severity or rule; **Clear filters** resets them. When there are none, the panel says, "No alerts were raised in this session. That says only that no rule fired: it is not a statement that the traffic is safe." |
+| **Alerts** | What the detection rules flagged, one entry for each alert, with its evidence. [Annotated below](#the-alerts). |
 | **External IP addresses** | The public addresses the session talked to: when they were first and last seen, packets, data, ports, protocols, peers, whether they raised an alert, and the result of the address lookup. At most 100 are listed, with the ones that raised an alert first. |
 | **Flows** | The finished flows, 25 to a page: the two ends, protocol, first and last seen, duration, packets and data in each direction, TCP flags and what ended the flow (**Idle**, **Evicted**, **Closed** or **Session ended**). |
 | **Detection rules** | The seven rules with their threshold, time window and the severity at one, three and ten times the threshold. A rule that needs address lookups shows **Inactive** when lookups are switched off on the server. |
+
+#### The session summary
+
+![The top of an analysed session: the pick bar and the Session summary panel, with five numbered markers](screenshots/network-session.png)
+
+1. **The pick bar.** The one described under [Session history](#session-history). Here the session
+   was analysed from a file and there is no live capture, so it offers **Clear selection**.
+2. **The state, and Delete session.** The badge says how the session ended: here **Completed**.
+   **Delete session** is explained under [Deleting a session](#deleting-a-session).
+3. **The seven figures.** Duration, Packets, Data, Active flows, Flows seen, Alerts and Packets
+   dropped. Here the 72 packets of the sample made 59 flows and raised 3 alerts.
+4. **The facts.** The source, when the capture started and ended, the time of the first and the last
+   packet, and the alerts per rule (here NET-001: 2 and NET-005: 1). The capture times are when the
+   server read the file. The packet times are the ones recorded inside it, which is why the demo's
+   sample says "last year". For a live capture the two are close together.
+5. **What the totals leave out.** What was not counted or not kept: packets dropped by the monitor,
+   non-IP packets (here 1, such as ARP), malformed packets, flows that were closed early or not
+   stored, repeat alerts that were suppressed, alerts that were lost and whether the top-talker lists
+   were cut short. A zero here means only that the monitor itself saw none. It cannot see packets
+   that the operating system or the network card dropped earlier.
+
+#### The alerts
+
+![The Alerts panel with a Critical NET-005 alert and its address lookup, with six numbered markers](screenshots/network-alerts.png)
+
+1. **Filters.** The severity buttons (**Low**, **Medium**, **High**, **Critical**) and the **Rule**
+   menu narrow the list. **Clear filters** resets them.
+2. **The alert.** Its severity (here **Critical**), the rule's ID (NET-005) and the rule's title.
+3. **The explanation.** What the rule saw, in words, and "Observed X against a threshold of Y". A
+   rule that counts over a period adds ", within N seconds". NET-005 has no period, so this one
+   does not.
+4. **The facts.** The source, the destination, the protocol, and when the traffic was first and last
+   observed.
+5. **Evidence.** Opens the packets, flows and addresses behind the alert.
+6. **Address lookup.** For an alert about a public address: the result of looking it up with the
+   providers, here "Risk score 100 of 100", Critical, and one line for each provider that says
+   whether it answered and, if it gave one, its verdict. See [Address lookups](#address-lookups).
+
+When there are no alerts, the panel says, "No alerts were raised in this session. That says only
+that no rule fired: it is not a statement that the traffic is safe."
 
 ### Address lookups
 
@@ -544,48 +597,64 @@ names the setting, `CIPHERFORGE_MASTER_KEY`. Uploading and sharing stay switched
 
 ### Uploading a file
 
-In **Upload a file**, choose a file and press **Encrypt and upload**. The panel shows the largest
-size the server accepts ("Largest file: 25 MB."). When it is done, it says "<name> is encrypted and
-stored", with a link, **Share this file**, that opens the file's details.
+In **Upload a file**, choose a file and press **Encrypt and upload**.
+
+![The Files screen right after an upload, with five numbered markers](screenshots/files.png)
+
+1. **The drop zone.** Drag a file onto it, or press "choose a file". It shows the largest size the
+   server accepts ("Largest file: 25.0 MB."). A file that breaks a rule, such as being too large or
+   empty, is refused before it is sent, and the panel says why.
+2. **Encrypt and upload.** Sends the chosen file, which the server encrypts before it stores it.
+   Until you have chosen one, the panel says "No file chosen."
+3. **The result.** "incident-summary.txt is encrypted and stored (1.05 KB)." The link, **Share this
+   file**, opens the file's details.
+4. **Your files.** Everything you have stored. See [Your files](#your-files).
+5. **A file's name.** A link that opens the file's details. See
+   [A file's details](#a-files-details).
 
 ### Your files
 
-**Your files** lists what you have stored: the name, size, upload time, state and share links. The
-state is **Ready**, or **Integrity problem** if the file failed its check when it was last read. Such
-a file cannot be shared, and the page says to delete it and upload the original again. The last
-column reads **No links**, "N active of M links" or **Cannot be shared**. Click a file to open its
-details. The address then ends in `?file=` and the file's ID.
+**Your files** lists what you have stored, ten to a page: the name, size, upload time, state and
+share links. The state is **Ready**, or **Integrity problem** if the file failed its check when it
+was last read. Such a file cannot be shared, and the page says to delete it and upload the original
+again. The last column reads **No links**, "N active of M links" or **Cannot be shared**. Click a
+file to open its details. The address then ends in `?file=` and the file's ID. The bin button at the
+end of a row deletes the file, after the same question as **Delete file** in the details.
 
 ### A file's details
 
-The details show the size, upload time, state, the encryption (AES-256-GCM) and the number of links,
-and offer **Delete file**. Below them are three panels.
+![A file's details in demo mode: the file, its two share links, a link that was just made, and the activity, with five numbered markers](screenshots/files-share.png)
 
-- **Share links** lists every link made for the file. Each shows a status (**Active**, **Expired**,
-  **Revoked** or **Limit reached**), a **Password** tag when it has one, and a short ID (the first
-  eight characters of its identifier, which is not the link itself). It also shows when the link was
-  created and when it expires, how many downloads were used ("2 / 5 used") or are left, the last
-  download and whether it was revoked. **Revoke** appears on an active link. It asks first ("Revoke
-  this link?") and then the link stops working at once.
-- **Create a share link** has **Expires after (hours)**, **Maximum downloads** and an optional
-  **Password**, with a **Show** and **Hide** switch for it. The limits are the server's. Press
-  **Create link**.
-- **Activity** lists what happened to the file: **File uploaded**, **Link created**, **File
-  downloaded**, **Download refused**, **Wrong password**, **Expired link opened**, **Link revoked**,
-  **Download limit reached**, **Integrity check failed** and **File deleted**. Every row shows when
-  it happened (in IST), whether it succeeded, which link was involved and a short detail. It does
-  not show who or where the request came from.
+1. **The details** show the size, upload time, state, the encryption (AES-256-GCM) and the number of
+   links, and offer **Delete file**. **Close** hides them again.
+2. **Share links** lists every link made for the file. Each shows a status (**Active**, **Expired**,
+   **Revoked** or **Limit reached**), a **Password** tag when it has one, and a short ID (the first
+   eight characters of its identifier, which is not the link itself). It also shows when the link was
+   created and when it expires, how many downloads were used ("2 / 5 used") or are left, the last
+   download and whether it was revoked. **Revoke** appears on an active link. It asks first ("Revoke
+   this link?") and then the link stops working at once.
+3. **Create a share link** has **Expires after (hours)**, **Maximum downloads** and an optional
+   **Password**, with a **Show password** and **Hide password** switch for it. The limits are the
+   server's. Press **Create link**.
+4. **Your new share link** appears inside that panel after **Create link**. See the next paragraph.
+5. **Activity** lists what happened to the file: **File uploaded**, **Link created**, **File
+   downloaded**, **Download refused**, **Wrong password**, **Expired link opened**, **Link revoked**,
+   **Download limit reached**, **Integrity check failed** and **File deleted**. Every row shows when
+   it happened (in IST), whether it succeeded, which link was involved and a short detail. It does
+   not show who or where the request came from.
 
 **The new link is shown once.** After **Create link**, the panel says, "Copy it now: this link is
 shown only once. CipherForge keeps only a fingerprint of it, so it cannot be shown again. If you lose
 it, revoke the link and make a new one." Press **Copy link**, and **Hide link** when you are done.
 Hiding it does not revoke it. Anyone who has the link can download the file, or, if you set a
 password, anyone who has the link and the password. The encryption key is not part of the link, so
-tell the person the password through another channel.
+tell the person the password through another channel. Under the link, the panel repeats what the
+link allows: when it expires, how many downloads it has and whether a password is needed.
 
 The link is built from the address you are using, so on your own computer it looks like
 `http://127.0.0.1:5173/share/<a long random token>` and works only on that computer. Behind a real
-host name it uses that name.
+host name it uses that name. (The picture was taken on a demo server on port 4280, so its link says
+4280.)
 
 **Delete file** asks "Delete this file?" and warns that it "permanently deletes the encrypted file
 and its key" and that every link made for it stops working at once. The audit log keeps a record
@@ -594,12 +663,20 @@ that the file existed and was deleted.
 ## The share page
 
 A share link opens the share page (`/share/` and the token). It is the one screen that needs no
-sign-in and has no menu: it shows "Shared with you", the file's name, its size, when the link expires
-and how many downloads are left. A password-protected file shows "A password-protected file" instead
-of its name until it has been downloaded, and a box for the password.
+sign-in and has no menu.
 
-Press **Download**. The page says "Decrypting and checking the file. This can take a moment." and
-then "Your download has started". If your browser did not start it, **Save again** tries again.
+![The share page for a password-protected file, with four numbered markers](screenshots/share-page.png)
+
+1. **What was shared.** "Shared with you" and the file's name. A password-protected file shows "A
+   password-protected file" instead of its name, as here, until it has been downloaded.
+2. **What the link allows.** The file's size, when the link expires and how many downloads are left.
+3. **The password box.** Only a password-protected link has one. The page says that the person who
+   sent the link gave you the password separately.
+4. **Download.** Press it, after typing the password if the link has one.
+
+Pressing it starts the download. The page says "Decrypting and checking the file. This can take a
+moment." and then "Your download has started". If your browser did not start it, **Save again**
+tries again.
 
 When a link does not work, the page says why, in its own words. The same words are used however the
 link failed, so the page does not reveal whether a link ever existed.
