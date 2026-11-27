@@ -642,11 +642,13 @@ automatic checks on GitHub) or that the design looks good to a person.
 has been checked.
 
 The checks also run automatically on GitHub, in `.github/workflows/ci.yml` (four jobs: backend,
-frontend, dashboard end-to-end in Chromium on Linux, and a Docker build with a smoke test). Its first
-run failed two of the four jobs. [What the first run on GitHub found](docs/testing.md#what-the-first-run-on-github-found)
-explains the three causes, all of which are fixed. The same section records a later failure, one
-browser test that assumed the page would be slower than it was on a fast runner; its fix is in the
-repository and the next run on GitHub is what confirms it.
+frontend, dashboard end-to-end in Chromium on Linux, and a Docker build with a smoke test). They have
+found real problems each time they met new work. The first run failed two of the four jobs, and the
+first run of the network, file-sharing and four-provider work failed two again: the PostgreSQL tests
+reset their database in a way a migration refuses, a sample capture depended on the computer that
+built it, and one test depended on how fast the machine was.
+[What the first run on GitHub found](docs/testing.md#what-the-first-run-on-github-found) explains
+every cause; all of them are fixed, and the next run passed all four jobs.
 
 ## Project layout
 
@@ -815,7 +817,8 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
   with a real nginx program outside Docker. If Path C fails, use Path A or B, and please report it.
   Details: [Verification status](docs/deployment.md#verification-status).
 - **The automatic checks are new.** They ran for the first time only after the project was put
-  online, and that first run failed two of its four jobs for three reasons, all since fixed (see
+  online. That first run failed two of its four jobs, and the first run of the network, file-sharing
+  and four-provider work failed two again, each time for different reasons, all since fixed (see
   [What the first run on GitHub found](docs/testing.md#what-the-first-run-on-github-found)).
 - **Microsoft sign-in has never been tried with a real organisation.** The token checks are tested
   with generated keys only.
@@ -856,9 +859,9 @@ that matters. More detail is in [docs/threat-intelligence.md](docs/threat-intell
   temporary file in the storage folder that only you can remove by hand. Nothing tidies either away,
   and there is no storage limit per person.
 - **Part of this was tested on one kind of computer.** The network and file-sharing tests were run on
-  SQLite on a Windows computer. A few of them (file permissions, symbolic links) need Linux and the
-  PostgreSQL copies need a PostgreSQL database, so they are skipped there. They are meant to run in
-  the automatic checks on GitHub, which have not seen this code yet.
+  a Windows computer, on SQLite and on a local PostgreSQL 16.15. A few of them (file permissions,
+  symbolic links) need Linux, so they are skipped there. They also run in the automatic checks on
+  GitHub, on Linux with PostgreSQL 16, where they passed.
 
 ### Limits of the dashboard
 

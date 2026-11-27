@@ -388,9 +388,10 @@ These follow from the current design and are not hidden.
 - **No sharing with named users.** A link is the only way to share; there are no recipient accounts.
 - **Metadata is visible to the server.** File size, owner, creation time and link rules are stored in
   plaintext in the database.
-- **Tests.** Without `TEST_DATABASE_URL` the file-sharing tests run on SQLite only, which is how they
-  were run on the development machine. The CI workflow sets it to a PostgreSQL 16 service, so the
-  concurrent-download tests also run there. See [testing.md](testing.md#quality-checks).
+- **Tests.** Without `TEST_DATABASE_URL` the file-sharing tests run on SQLite only. They were also
+  run against a local PostgreSQL 16.15, and the CI workflow sets the variable to a PostgreSQL 16
+  service, so the concurrent-download tests run on both engines. See
+  [testing.md](testing.md#quality-checks).
 
 ## Where the code is
 

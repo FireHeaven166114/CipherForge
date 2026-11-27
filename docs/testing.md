@@ -49,21 +49,24 @@ the details.
 
 ### Latest full run
 
-Run on the author's computer (Windows 11, Python 3.12.15, Node.js 26.13.0) on 26 November 2026. The
-numbers go stale with the next change; run the command to get current ones.
+Run on the author's computer (Windows 11, Python 3.12.15, Node.js 26.13.0) on 26 November 2026. A row
+that also gives a GitHub Actions result is from the run on Linux (Ubuntu runner) on 27 November 2026,
+the first one in which all four jobs passed on this code. The numbers go stale with the next change;
+run the command to get current ones.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Backend tests | `pytest -q -rs --cov=app` in `backend/` | 2887 passed, 821 skipped, 0 failed, 0 warnings, in 7 min 17 s. Line coverage of `app/`: 98% |
-| What the skips are | the `-rs` output | 812 are the PostgreSQL copies of database tests (`TEST_DATABASE_URL` is not set here); 5 are the opt-in live tests; 4 cannot run on this system (symbolic links twice, POSIX file permissions, SQLite's missing `TRUNCATE`) |
+| Backend tests | `pytest -q -rs --cov=app` in `backend/` | 2888 passed, 821 skipped, 0 failed, 0 warnings, in 5 min 15 s. Line coverage of `app/`: 98% |
+| Backend tests with PostgreSQL | the same command with `TEST_DATABASE_URL` pointing at a PostgreSQL 16.15 server on this computer (started from the `pixeltable-pgserver` package, with a throwaway data folder) | 3699 passed, 10 skipped, 0 failed, 0 warnings, in 16 min 12 s. Line coverage of `app/`: 98%. GitHub Actions ran it on Linux with a PostgreSQL 16 service: 3702 passed, 7 skipped, 0 failed, in 7 min 51 s, coverage 99% |
+| What the skips are | the `-rs` output | Without PostgreSQL: 812 are the PostgreSQL copies of database tests (`TEST_DATABASE_URL` is not set); 5 are the opt-in live tests; 4 cannot run on this system (symbolic links twice, POSIX file permissions, SQLite's missing `TRUNCATE`). With PostgreSQL: the same 5 live tests, and 5 that cannot run on this system or this engine (symbolic links twice, POSIX file permissions, SQLite's missing `TRUNCATE`, and one test that reads the SQLite database file). On GitHub (Linux, PostgreSQL) 7 skip: the 5 opt-in live tests, SQLite's missing `TRUNCATE` and the test that reads the SQLite database file; the symbolic-link and file-permission tests run there and pass |
 | Backend static checks | `ruff check .`, `ruff format --check .`, `bandit -c pyproject.toml -r app`, the same for `devtools` with `--skip B311`, `pip-audit -r requirements.txt` | Clean: 143 files formatted, no `bandit` finding in about 11,700 lines of `app/` and 1,350 of `devtools/`, no known vulnerable dependency |
-| Frontend unit tests | `npm test` in `frontend/` | 126 files, 1506 tests passed, 0 failed, in 2 min 1 s |
+| Frontend unit tests | `npm test` in `frontend/` | 126 files, 1506 tests passed, 0 failed, in 2 min 1 s. GitHub Actions: the same 126 files and 1506 tests passed, in 49 s |
 | Frontend type check and lint | `npm run typecheck`, `npm run lint` in `frontend/` | Both finished without errors |
 | Production build | `npm run build` in `frontend/` | Built (343 modules). The main script is 610 kB (185 kB compressed), which makes Vite warn that one file is larger than 500 kB; there is no other warning. A search of the 12 files in `dist/` for the three secret values in the author's `.env` found none |
 | Frontend dependency audit | `npm audit --omit=dev --audit-level=moderate` and `npm audit --audit-level=moderate` in `frontend/` | 0 vulnerabilities in both, across 295 packages (13 of them in what ships). The package proxy used here refused the first attempts that day; a deliberately vulnerable test package showed that it returns real findings, so the empty result is a result. CI runs the same two commands |
 | Live provider tests | `CIPHERFORGE_LIVE_TESTS=1 pytest -m live -q -rs` in `backend/` | 2 passed (AbuseIPDB and AlienVault OTX, one real `8.8.8.8` lookup each); 3 skipped: no VirusTotal key, no ThreatFox key, and the capture test, which has its own switch |
 | Live capture test | `CIPHERFORGE_LIVE_CAPTURE_TESTS=1 pytest tests/test_network_live_capture.py -q -rs` in `backend/` | 1 passed: a real capture on this computer saw at least one of the five datagrams the test sends to a documentation-range address, dropped none, stopped cleanly and left no thread behind |
-| Browser tests | `npm run test:e2e` in `frontend/` (Microsoft Edge, one worker, no retries) | 732 passed, 0 failed, 0 flaky, 0 skipped: 30.5 minutes of testing, 30 min 44 s with the production build the command makes first. This is the second complete run of the day; the first failed 12 tests for five causes, all fixed ([what it found](#what-the-first-complete-run-of-the-new-modules-found)). GitHub Actions has not run this version of the suite yet: its last run, on the commit before the network, file-sharing and four-provider work, passed 685 of 686 tests |
+| Browser tests | `npm run test:e2e` in `frontend/` (Microsoft Edge, one worker, no retries) | 732 passed, 0 failed, 0 flaky, 0 skipped: 30.5 minutes of testing, 30 min 44 s with the production build the command makes first. This is the second complete run of the day; the first failed 12 tests for five causes, all fixed ([what it found](#what-the-first-complete-run-of-the-new-modules-found)). GitHub Actions ran this version of the suite too, on Linux in Chromium: 732 passed, none failed, none retried, in 19.6 minutes |
 
 ### How far each feature has been checked
 
@@ -87,7 +90,7 @@ and the row says what is missing and how to continue.
 | External address enrichment | **Live verified** for AbuseIPDB and OTX during live captures: public addresses from this machine's own traffic were looked up, and the documentation-range destinations in the same runs were not. The rules that decide what may be sent are **automated** | VirusTotal and ThreatFox: **blocked**, as above |
 | Encrypted file sharing | **Automated**: encryption, storage, limits, revocation, tampering, audit and the HTTP contract in the backend tests, and the whole journey in the browser (upload, password-protected share, anonymous download, revoke, delete). Also run end to end **by hand** over raw HTTP on a scratch database | No independent review of the design, no published test vectors, no key rotation or recovery. The server does the encryption, so this is not end-to-end encryption ([details](encryption-design.md#what-this-does-not-protect-against)) |
 | Sign-in | Development sign-in in every browser test. Entra ID token checking is **automated** with locally signed tokens | Not tried against a real tenant; the dashboard has no sign-in screen of its own |
-| Database and migrations | **Automated** on SQLite. The upgrade, downgrade and upgrade again were also run **by hand** on a copy of the author's database, and the real one is at the latest revision with its rows intact | PostgreSQL by hand only up to migration `0002`; migrations `0003` to `0005` run on PostgreSQL in CI |
+| Database and migrations | **Automated** on SQLite and on PostgreSQL 16 (a local 16.15, and CI). The upgrade, downgrade and upgrade again were also run **by hand** on a copy of the author's database, and the real one is at the latest revision with its rows intact | A running server on PostgreSQL was tried by hand only up to migration `0002`; migrations `0003` to `0005` and the network and file endpoints are covered on PostgreSQL by the automated tests alone |
 | nginx, Docker and Compose | `nginx.conf` **by hand** with a real nginx 1.30.8. The deployment files are **automated**: a test makes settings, `.env.example` and Compose agree. The images and the Compose stack: CI only | [Deployment: verification status](deployment.md#verification-status) |
 | Accessibility and security headers | **Automated** in the browser: axe-core, and the browser's own enforcement of the Content Security Policy | No screen reader was used, and the real nginx is not in the browser suite |
 
@@ -127,15 +130,17 @@ typecheck:app`) and the browser tests in `e2e/`. The Docker image has no browser
 out of the build context by `frontend/.dockerignore`), so the image builds with `npm run build:app`,
 which is `build` without the check on the tests.
 
-Point `TEST_DATABASE_URL` at a throwaway database: the PostgreSQL tests create and drop tables in it.
-Without it those tests are skipped, so a plain `pytest` run reports a large number of skips (`-rs`
-lists each reason) and every database test has run on SQLite only. CI sets it, so each of those
-tests runs on SQLite and on PostgreSQL 16. A few tests are skipped on purpose on one engine or one
-operating system (SQLite has no `TRUNCATE`, POSIX file permissions do not exist on Windows, and a
-Windows account may not be allowed to create symbolic links) and say why. The encrypted-file tests,
-including the ones that release parallel downloads at the same instant, were run on SQLite in the
-build environment. Their PostgreSQL variants run only in CI, so the CI result for a commit, not this
-page, says whether they pass.
+Point `TEST_DATABASE_URL` at a throwaway database: before and after every PostgreSQL test the suite
+drops and recreates that database's `public` schema, so anything else in it is lost. (Reversing the
+migrations would not do as a reset: revision `0003` refuses to downgrade while MD5 or SHA-1
+indicators are stored.) Without the variable those tests are skipped, so a plain `pytest` run reports
+a large number of skips (`-rs` lists each reason) and every database test has run on SQLite only. CI
+sets it, so each of those tests runs on SQLite and on PostgreSQL 16. A few tests are skipped on
+purpose on one engine or one operating system (SQLite has no `TRUNCATE`, POSIX file permissions do
+not exist on Windows, and a Windows account may not be allowed to create symbolic links) and say why.
+The whole suite, every PostgreSQL variant included, was also run on the author's computer against a
+local PostgreSQL 16.15 (see [Latest full run](#latest-full-run)). Its encrypted-file tests, including
+the ones that release parallel downloads at the same instant, therefore ran on both engines.
 
 Tests that touch the machine or the network are kept apart. `pytest` never calls a provider and never
 captures a packet unless you ask for it (see [Opt-in live tests](#opt-in-live-tests)). The tests of
@@ -202,7 +207,29 @@ transient state is the same: hold your own request with `page.route` and `pause(
 on the demo API being slow. The test had passed on the author's computer and on earlier runs on
 GitHub, so the outcome depended on how fast the machine was. The fix was made after the failed run.
 Locally the test passed on its own, five times in a row (`--repeat-each=5`), and in the complete
-732-test run of 26 November; the first run on GitHub that includes it is what confirms it on Linux.
+732-test run of 26 November. The first run on GitHub that included it (the next one, below) passed
+all 732 tests on Linux, with no retries.
+
+#### The run on GitHub that first included the new modules
+
+The first run on GitHub of the network, file-sharing and four-provider work (26 November 2026)
+passed the Docker and browser jobs and failed the backend and frontend jobs. Three problems were
+behind that. The author's computer had no PostgreSQL when the tests were written, which hid two of
+them, and the third depended on how fast the computer was.
+
+| Job | What failed | Why | The fix |
+| --- | --- | --- | --- |
+| Backend | 488 of the PostgreSQL variants of database tests failed or errored, from the first test that stored a SHA-1 hash onwards: `RuntimeError: Cannot downgrade: 2 MD5 or SHA-1 indicator(s) are stored`, and counts that were too high (`16 == 4`). | The test fixture emptied the database after every test by running all the migrations backwards. Revision `0003` refuses to go back while MD5 or SHA-1 indicators exist, so the first test that stored one made the reset fail. PostgreSQL runs a downgrade in one transaction, so nothing was undone and every later test started on a dirty database. It was a fault in the fixture, not in the application. | The fixture drops and recreates the `public` schema before and after each test. The downgrade itself stays covered by `test_upgrade_downgrade_and_readiness_on_postgresql`. All 814 PostgreSQL variants then passed against a local PostgreSQL 16.15. |
+| Backend | `test_the_committed_sample_capture_is_what_the_generator_writes` | The generator left the hardware source address of the ARP frame unset, and Scapy filled it in from the network adapter of the computer that ran the generator. The committed sample held that adapter's address, so the file differed on every other computer. | The generator sets that address to the same made-up one as the rest of the file, and the sample was regenerated (six bytes changed). A new test checks that the file holds only made-up or broadcast hardware addresses. |
+| Frontend | 1 of 1506 tests: "shows the busy state while the providers are asked, and ignores a second press" could not find "Risk score 72 of 100". | After a lookup the alert row shows the answer only until the list around it is read again. The test's alert list kept returning the alert without the lookup, so the score disappeared as soon as that second read arrived. A fast computer saw the text in between; the GitHub runner did not. | The test's list returns the looked-up alert once the lookup is done, as the real server does. With a 300 ms pause added to the old test it failed every time; the new test passes with the same pause. |
+
+The browser job ran all 732 tests in Chromium on Linux in 20.7 minutes with no failure and no retry,
+and the Docker job built both images and passed its smoke test with the new Compose file.
+
+After the three fixes the next run on GitHub (27 November 2026) passed all four jobs: the backend
+with 3702 passed and 7 skipped in 7 min 51 s (line coverage of `app/` 99%), the frontend with 1506
+tests plus the build and both audits, the browser job with 732 tests in 19.6 minutes and no retry,
+and Docker. The 7 skips are explained in [Latest full run](#latest-full-run).
 
 ### What the first complete run of the new modules found
 
@@ -338,8 +365,9 @@ exception, a failed request, an unexpected HTTP error status or a Content Securi
 - Every browser test signs in as the same development user, so the browser cannot show that one
   person's files and capture sessions are hidden from another. The backend tests do, with two users
   (`test_files_security.py`, `test_network_api.py`, `test_network_service_sessions.py`).
-- It runs on SQLite. PostgreSQL is covered by the backend tests, which use it in CI (the author ran
-  them on PostgreSQL by hand only up to Phase 3c, before the network and file tables existed).
+- It runs on SQLite. PostgreSQL is covered by the backend tests, which use it locally and in CI (the
+  author ran the application against PostgreSQL by hand only up to Phase 3c, before the network and
+  file tables existed).
 - The security specs run against a small Node server that stands in for nginx and reads its header
   values from the real `nginx.conf`: the file is checked, nginx is not. A real nginx was run against
   a copy of the file by hand (see [Deployment: verification status](deployment.md#verification-status)),

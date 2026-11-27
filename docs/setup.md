@@ -646,7 +646,7 @@ npm run test:e2e
 | Command | What it runs |
 | --- | --- |
 | `pytest` | The backend unit and API tests on SQLite. It never calls a real provider and never captures real packets: the two opt-in modules below skip themselves unless you switch them on. Tests that need PostgreSQL are skipped. |
-| `pytest` with `TEST_DATABASE_URL` | The same tests, plus the PostgreSQL variants. Point it at a **throwaway database**: the tests create and drop its tables. The user, password and database name above are placeholders. |
+| `pytest` with `TEST_DATABASE_URL` | The same tests, plus the PostgreSQL variants. Point it at a **throwaway database**: before and after every PostgreSQL test the suite drops and recreates its `public` schema, so anything else in that schema is lost. The user, password and database name above are placeholders. |
 | `pytest -m live` with `CIPHERFORGE_LIVE_TESTS=1` | One real lookup per provider, about Google's public resolver `8.8.8.8`. The keys come from the environment or from `.env`. A provider without a key is skipped, and each lookup uses one request of that provider's quota. |
 | `pytest tests/test_network_live_capture.py` with `CIPHERFORGE_LIVE_CAPTURE_TESTS=1` | A real capture on this computer: five small datagrams are sent to a documentation address (`192.0.2.1`) and the test checks that the capture saw them. It needs a driver and capture privileges, and is skipped without them: see [Live capture prerequisites](#live-capture-prerequisites-optional). |
 | `npm test` | The dashboard's unit tests (Vitest). |
