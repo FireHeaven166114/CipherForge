@@ -82,17 +82,30 @@ def production_logging(
 # --- Migrated database --------------------------------------------------------
 
 
-def _migrate(url: str, *, down: bool = False) -> None:
+def _migrate(url: str) -> None:
     """Run the real Alembic migrations, so tests exercise the schema and triggers we ship."""
     engine = create_engine(url, poolclass=NullPool)
     try:
         with engine.begin() as connection:
             config = Config(str(BACKEND_DIR / "alembic.ini"))
             config.attributes["connection"] = connection
-            if down:
-                command.downgrade(config, "base")
-            else:
-                command.upgrade(config, "head")
+            command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
+def _drop_schema(url: str) -> None:
+    """Empty a PostgreSQL test database, whatever the tests left in it.
+
+    Reversing the migrations is not a reset: revision 0003 refuses to downgrade while hash
+    indicators are stored, and audit_logs rejects TRUNCATE by design. Dropping the schema removes
+    the tables, functions and triggers together. test_migrations covers the downgrade itself.
+    """
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP SCHEMA IF EXISTS public CASCADE")
+            connection.exec_driver_sql("CREATE SCHEMA public")
     finally:
         engine.dispose()
 
@@ -109,12 +122,13 @@ def db_url(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[str]:
     url = os.getenv("TEST_DATABASE_URL", "")
     if not url:
         pytest.skip("TEST_DATABASE_URL not set")
+    # An interrupted earlier run may have left tables behind, so start from nothing as well.
+    _drop_schema(url)
     _migrate(url)
     try:
         yield url
     finally:
-        # audit_logs rejects TRUNCATE by design, so reset by dropping the schema.
-        _migrate(url, down=True)
+        _drop_schema(url)
 
 
 # --- Entra token helpers ------------------------------------------------------
